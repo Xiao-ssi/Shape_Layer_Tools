@@ -1,8 +1,10 @@
 # 网优图层工具 (Shape Layer Tools)
 
-专为网络优化（网优）工作设计的 QGIS 插件，提供常用的矢量图层处理功能。
+Pluggable tools for network optimization (net-op) work in QGIS, providing common vector-layer operations.
 
-## 功能
+A QGIS plugin with layer tools for network optimization: generate sector shapes from an Excel table, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx.
+
+## 功能 / Features
 
 - **制作图层**：无需固定模板，Excel 表中含经纬度、方位角、尺寸字段，即可生成圆形、扇形、刀形等不同形状的矢量图层。
 - **导出图层**：将已加载的矢量图层导出为 SHP / TAB / KML / KMZ / xlsx 等格式。

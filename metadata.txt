@@ -1,7 +1,6 @@
 [general]
 name=网优图层工具 (Shape Layer Tools)
 qgisMinimumVersion=3.16
-qgisMaximumVersion=3.40
 description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx. More features in development.
 version=1.0.0
 author=肖司
@@ -13,6 +12,6 @@ homepage=https://github.com/Xiao-ssi/Shape_Layer_Tools
 tags=excel,shape,circle,sector,sword,shp,kml,kmz,多边形,图形,缓冲,膨胀
 category=vector
 icon=icons/icon.svg
-experimental=True
+experimental=False
 deprecated=False
 changelog=1.0.0 首个版本：制作图层、导出图层、搜索数据、图层包含查询、缓冲膨胀缩小。

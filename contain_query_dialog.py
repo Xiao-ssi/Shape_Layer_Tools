@@ -5,6 +5,7 @@ import os
 import csv
 
 from qgis.core import (
+    Qgis,
     QgsProject,
     QgsVectorLayer,
     QgsField,
@@ -17,6 +18,7 @@ from qgis.core import (
     QgsRectangle,
     QgsPointXY,
     QgsFields,
+    QgsMessageLog,
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import (
@@ -46,14 +48,14 @@ def _first_point(qg):
     try:
         p = qg.vertexAt(0)
         return QgsPointXY(p.x(), p.y())
-    except Exception:
-        pass
+    except Exception as e:
+        QgsMessageLog.logMessage('取起点坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
     try:
-        if qg.type() == QgsWkbTypes.PointGeometry:
+        if qg.type() == QgsWkbTypes.GeometryType.PointGeometry:
             pt = qg.asPoint()
             return QgsPointXY(pt.x(), pt.y())
-    except Exception:
-        pass
+    except Exception as e:
+        QgsMessageLog.logMessage('取点几何坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
     return None
 
 
@@ -137,7 +139,7 @@ class ContainQueryDialog(QDialog):
                 continue
             # 需查询图层可以是任意矢量图层（点/线/面，甚至无几何）
             src_layers.append((l.name(), lid))
-            if l.geometryType() == QgsWkbTypes.PolygonGeometry:
+            if l.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry:
                 poly_layers.append((l.name(), lid))
         if not poly_layers:
             poly_layers = [('（无面图层面）', '')]
@@ -297,7 +299,9 @@ class ContainQueryDialog(QDialog):
                         continue
                     try:
                         d = pg.distance(start_g) * 111319.9
-                    except Exception:
+                    except Exception as e:
+                        QgsMessageLog.logMessage('计算距离失败, 跳过该候选面: %s' % e,
+                                                  'Shape_Layer_Tools', Qgis.Warning)
                         continue
                     if closest is None or d < cdist:
                         closest, cdist = pg, d
@@ -335,7 +339,7 @@ class ContainQueryDialog(QDialog):
             fields.append(QgsField(fname, QVariant.String))
 
         crs_authid = poly_layer.crs().authid() or 'EPSG:4326'
-        src_has_geom = pt_layer.wkbType() != QgsWkbTypes.NoGeometry
+        src_has_geom = pt_layer.wkbType() != QgsWkbTypes.Type.NoGeometry
         if src_has_geom:
             geom_token = QgsWkbTypes.displayString(pt_layer.wkbType()) or 'Point'
             uri = '%s?crs=%s' % (geom_token, crs_authid)
@@ -378,8 +382,8 @@ class ContainQueryDialog(QDialog):
                 canvas.setExtent(out_layer.extent())
             canvas.refresh()
             self.iface.layerTreeView().refreshLayerSymbology(out_layer.id())
-        except Exception:
-            pass
+        except Exception as e:
+            QgsMessageLog.logMessage('导出后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
 
         # 导出表格（保留全部匹配结果）
         out_path = self.edit_out.text().strip()

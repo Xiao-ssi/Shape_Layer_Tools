@@ -4,10 +4,12 @@
 本模块独立，可单独修改而不影响其他功能模块。"""
 
 from qgis.core import (
+    Qgis,
     QgsProject,
     QgsGeometry,
     QgsRectangle,
     QgsCoordinateTransform,
+    QgsMessageLog,
 )
 from qgis.PyQt.QtCore import Qt, QSettings, QTimer
 from qgis.gui import QgsRubberBand
@@ -254,8 +256,8 @@ class SearchWidget(QWidget):
         if band is not None:
             try:
                 self.canvas.scene().removeItem(band)
-            except Exception:
-                pass
+            except Exception as e:
+                QgsMessageLog.logMessage('移除闪烁带失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
             self._flash_band = None
 
     def goto_selected(self):
@@ -292,17 +294,17 @@ class SearchWidget(QWidget):
         current = self._display_fields if self._display_fields else field_names[:6]
         for f in field_names:
             it = QListWidgetItem(f)
-            it.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            it.setCheckState(Qt.Checked if f in current else Qt.Unchecked)
+            it.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            it.setCheckState(Qt.CheckState.Checked if f in current else Qt.CheckState.Unchecked)
             lw.addItem(it)
         v.addWidget(lw)
-        b = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        b = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         b.accepted.connect(dlg.accept); b.rejected.connect(dlg.reject)
         v.addWidget(b)
         if not dlg.exec_():
             return
         selected = [lw.item(i).text() for i in range(lw.count())
-                    if lw.item(i).checkState() == Qt.Checked]
+                    if lw.item(i).checkState() == Qt.CheckState.Checked]
         if not selected:
             QMessageBox.warning(self, '提示', '至少勾选一个字段'); return
         self._display_fields = selected
@@ -320,7 +322,7 @@ class SearchDialog(QDialog):
         lay = QVBoxLayout(self)
         self.widget = SearchWidget(iface, self)
         lay.addWidget(self.widget)
-        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
 

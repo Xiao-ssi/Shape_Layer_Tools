@@ -4,6 +4,7 @@
 import math
 
 from qgis.core import (
+    Qgis,
     QgsProject,
     QgsVectorLayer,
     QgsField,
@@ -14,6 +15,7 @@ from qgis.core import (
     QgsCoordinateTransform,
     QgsFields,
     QgsPointXY,
+    QgsMessageLog,
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import (
@@ -96,7 +98,7 @@ class BufferDialog(QDialog):
     def refresh_layers(self):
         items = []
         for lid, l in QgsProject.instance().mapLayers().items():
-            if not isinstance(l, QgsVectorLayer) or l.geometryType() == QgsWkbTypes.NoGeometry:
+            if not isinstance(l, QgsVectorLayer) or l.geometryType() == QgsWkbTypes.Type.NoGeometry:
                 continue
             items.append((l.name(), lid))
         self.cmb_layer.blockSignals(True)
@@ -120,9 +122,9 @@ class BufferDialog(QDialog):
             self.lbl_hint.setText('')
             return
         t = layer.geometryType()
-        if t == QgsWkbTypes.PointGeometry:
+        if t == QgsWkbTypes.GeometryType.PointGeometry:
             self.lbl_hint.setText('点图层：向四周膨胀。')
-        elif t == QgsWkbTypes.LineGeometry:
+        elif t == QgsWkbTypes.GeometryType.LineGeometry:
             self.lbl_hint.setText('线图层：向外扩大=线一侧、缩小区域=另一侧、两边=两侧；均按完整距离，方向垂直于线（任意走向适用）。')
         else:
             self.lbl_hint.setText('面图层：向外=整体外扩（含原区域）、向内=向内收缩、两边=边界向内外各扩一半。')
@@ -140,13 +142,13 @@ class BufferDialog(QDialog):
     def _resolve_direction(geom_type, dir_idx, dist):
         """返回 (buff_dist, side)。side: None对称缓冲 / 'left'左侧 / 'right'右侧。
         dir_idx: 0向外 1向内 2两边。点无内部，内扩按外扩处理。"""
-        if geom_type == QgsWkbTypes.LineGeometry:
+        if geom_type == QgsWkbTypes.GeometryType.LineGeometry:
             if dir_idx == 0:       # 向外扩大 → 向线左侧扩大
                 return  dist, 'left'
             if dir_idx == 1:       # 向内扩大 → 向线右侧扩大
                 return  dist, 'right'
             return  dist, None     # 两边扩大 → 两侧同时扩大
-        if geom_type == QgsWkbTypes.PointGeometry:
+        if geom_type == QgsWkbTypes.GeometryType.PointGeometry:
             return  dist, None     # 点：向四周
         # 面图层
         if dir_idx == 1:
@@ -161,7 +163,7 @@ class BufferDialog(QDialog):
         地理坐标系(如WGS84)先转到 EPSG:3857 按米缓冲，并做纬度比例校正后转回。"""
         try:
             is_line = side in ('left', 'right') and g is not None \
-                and g.type() == QgsWkbTypes.LineGeometry
+                and g.type() == QgsWkbTypes.GeometryType.LineGeometry
             if crs.isGeographic():
                 work = QgsCoordinateReferenceSystem('EPSG:3857')
                 x_to = QgsCoordinateTransform(crs, work, QgsProject.instance().transformContext())
@@ -197,8 +199,8 @@ class BufferDialog(QDialog):
             buf = line_wg.buffer(dist, 8)
             if buf and not buf.isEmpty():
                 return buf
-        except Exception:
-            pass
+        except Exception as e:
+            QgsMessageLog.logMessage('对称缓冲兜底失败: %s' % e, 'Shape_Layer_Tools', Qgis.Critical)
         return None
 
     def _build_side_band(self, line_wg, dist, side_left):
@@ -360,8 +362,8 @@ class BufferDialog(QDialog):
                 canvas.setExtent(out_layer.extent())
             canvas.refresh()
             self.iface.layerTreeView().refreshLayerSymbology(out_layer.id())
-        except Exception:
-            pass
+        except Exception as e:
+            QgsMessageLog.logMessage('生成后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
 
         self.lbl_status.setText('完成。')
         QMessageBox.information(

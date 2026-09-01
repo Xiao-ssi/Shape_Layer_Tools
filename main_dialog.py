@@ -5,6 +5,7 @@ import os
 import math
 
 from qgis.core import (
+    Qgis,
     QgsProject,
     QgsVectorLayer,
     QgsField,
@@ -19,6 +20,7 @@ from qgis.core import (
     QgsCategorizedSymbolRenderer,
     QgsRendererCategory,
     QgsSingleSymbolRenderer,
+    QgsMessageLog,
 )
 from qgis.PyQt.QtCore import Qt, QVariant
 from qgis.PyQt.QtGui import QColor
@@ -99,7 +101,7 @@ class ExcelShapeLayerDialog(QDialog):
         tip = QLabel(SIZE_UNIT_TIP)
         tip.setStyleSheet('color:#666;'); tip.setWordWrap(True)
         layout.addWidget(tip)
-        btn_box = QDialogButtonBox(QDialogButtonBox.Close)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)
 
@@ -222,7 +224,7 @@ class ExcelShapeLayerDialog(QDialog):
         root.addWidget(grp)
         self.btn_export = QPushButton('导出到本地')
         self.btn_export.clicked.connect(self.on_export)
-        root.addWidget(self.btn_export, alignment=Qt.AlignLeft)
+        root.addWidget(self.btn_export, alignment=Qt.AlignmentFlag.AlignLeft)
         root.addStretch()
         return page
 
@@ -433,7 +435,7 @@ class ExcelShapeLayerDialog(QDialog):
             self.table_class.setItem(i, 3, QTableWidgetItem(str(width if width is not None else '')))
             self.table_class.setCellWidget(i, 4, ColorButton(cfg.get('fill', self.global_fill)))
             self.table_class.setCellWidget(i, 5, ColorButton(cfg.get('line', self.global_line)))
-        self.table_class.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_class.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table_class.setColumnWidth(0, 120)
 
     def _collect_classify_config(self):
@@ -555,7 +557,7 @@ class ExcelShapeLayerDialog(QDialog):
                 if best is None:
                     skipped += 1; continue
                 geom = best
-            if (geom.type() != QgsWkbTypes.PolygonGeometry
+            if (geom.type() != QgsWkbTypes.GeometryType.PolygonGeometry
                     or not geom.isGeosValid() or not geom.area() > 0):
                 skipped += 1; continue
             # 参考 cyanlove 栅格工具：QgsFeature() + setFields(fields) + 位置式 setAttributes
@@ -596,8 +598,8 @@ class ExcelShapeLayerDialog(QDialog):
             canvas.refresh()
             self.iface.layerTreeView().refreshLayerSymbology(layer.id())
             self.iface.layerTreeView().setCurrentLayer(layer)
-        except Exception:
-            pass
+        except Exception as e:
+            QgsMessageLog.logMessage('生成后定位/刷新画布失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
 
         msg = '已生成图层 "%s"，共 %d 个要素。' % (layer.name(), len(feats))
         if skipped:
@@ -731,7 +733,7 @@ class ExcelShapeLayerDialog(QDialog):
                 err, msg = res[0], (res[1] if len(res) > 1 else '')
             else:
                 err, msg = res, ''
-            if err != QgsVectorFileWriter.NoError:
+            if err != QgsVectorFileWriter.WriterError.NoError:
                 detail = ('\n%s' % msg) if msg else ''
                 hint = WRITER_ERROR_TEXT.get(err, '未知错误')
                 QMessageBox.critical(self, '导出失败',

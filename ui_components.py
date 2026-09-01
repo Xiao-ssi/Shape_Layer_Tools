@@ -107,7 +107,7 @@ class ColorPickDialog(QDialog):
         arow = QHBoxLayout()
         arow.addWidget(QLabel('透明度(%):'))
         self.pct = 100 - int(round(initial.alpha() / 255.0 * 100))
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 100); self.slider.setValue(self.pct)
         self.spin = QSpinBox(); self.spin.setRange(0, 100); self.spin.setSuffix('%')
         self.spin.setValue(self.pct)
@@ -171,7 +171,7 @@ class ClassifyConfigDialog(QDialog):
             ['分类值', '样式', '尺寸(米)', '顶角/剑宽', '填充', '边框'])
         self.table.verticalHeader().setVisible(False)
         lay.addWidget(self.table)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
         lay.addWidget(bb)
         self._populate()
@@ -203,7 +203,7 @@ class ClassifyConfigDialog(QDialog):
             line = cfg.get('line') or QColor(0, 0, 0, 0)  # 默认无线条边框（透明）
             self.table.setCellWidget(i, 4, ColorButton(fill))
             self.table.setCellWidget(i, 5, ColorButton(line))
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(0, 120)
 
     def result_config(self):
