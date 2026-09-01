@@ -2,15 +2,14 @@
 name=网优图层工具 (Shape Layer Tools)
 qgisMinimumVersion=3.16
 qgisMaximumVersion=3.40
-description=网络优化工作常用到的图层工具，可以制作扇区图层，查询图层包含图层工具、膨胀扩大缩小点线面图形，并可导出为 SHP/TAB/KML/KMZ/xlsx格式，更多功能正在编写中。
+description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx. More features in development.
 version=1.0.0
 author=肖司
 email=xiaossi@139.com
-about=无需固定模板文件，只需要 Excel表中有经纬度、方位角、尺寸字段，即可生成不同形状的矢量图层，支持按字段或手工设置大小/距离，可导出为 SHP、TAB、KML、KMZ，可查找范围图层中包含哪些小图层在里面，可对点、线、面图进行膨胀扩大缩小。
-# 重要：提交官方仓库前，请把这两行换成你真实的 GitHub 仓库地址与提issue/bug页面，否则校验不通过
+about=Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer (expand) or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers.
 tracker=https://github.com/Xiao-ssi/Shape_Layer_Tools/issues
 repository=https://github.com/Xiao-ssi/Shape_Layer_Tools
-homepage=https://plugins.qgis.org/plugins/
+homepage=https://github.com/Xiao-ssi/Shape_Layer_Tools
 tags=excel,shape,circle,sector,sword,shp,kml,kmz,多边形,图形,缓冲,膨胀
 category=vector
 icon=icons/icon.svg
