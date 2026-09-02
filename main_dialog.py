@@ -619,7 +619,7 @@ class ExcelShapeLayerDialog(QDialog):
     @staticmethod
     def _unique_layer_name(base):
         """若项目已有同名图层，自动追加 -2/-3... 避免重名。"""
-        existing = {l.name() for l in QgsProject.instance().mapLayers().values()}
+        existing = {ly.name() for ly in QgsProject.instance().mapLayers().values()}
         if base not in existing:
             return base
         i = 2

@@ -97,10 +97,10 @@ class BufferDialog(QDialog):
 
     def refresh_layers(self):
         items = []
-        for lid, l in QgsProject.instance().mapLayers().items():
-            if not isinstance(l, QgsVectorLayer) or l.geometryType() == QgsWkbTypes.Type.NoGeometry:
+        for lid, ly in QgsProject.instance().mapLayers().items():
+            if not isinstance(ly, QgsVectorLayer) or ly.geometryType() == QgsWkbTypes.Type.NoGeometry:
                 continue
-            items.append((l.name(), lid))
+            items.append((ly.name(), lid))
         self.cmb_layer.blockSignals(True)
         self.cmb_layer.clear()
         if not items:
@@ -130,7 +130,7 @@ class BufferDialog(QDialog):
             self.lbl_hint.setText('面图层：向外=整体外扩（含原区域）、向内=向内收缩、两边=边界向内外各扩一半。')
 
     def _unique_name(self, base):
-        existing = {l.name() for l in QgsProject.instance().mapLayers().values()}
+        existing = {ly.name() for ly in QgsProject.instance().mapLayers().values()}
         if base not in existing:
             return base
         i = 2

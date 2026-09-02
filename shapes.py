@@ -81,16 +81,16 @@ def sector_polygon(lon, lat, radius_m, bearing_deg, width_deg, num_arc=24):
 def sword_polygon(lon, lat, length_m, width_m, bearing_deg):
     """剑形(箭头/匕首)：正向沿方位角。length为总长，width为刀身宽。"""
     w = max(width_m, length_m * 0.05)
-    l = length_m
+    ln = length_m
     # 局部点 (f沿前向, p沿右侧)
     local = [
-        (l, 0.0),            # 剑尖
-        (l * 0.15, w / 2.0), # 右肩
+        (ln, 0.0),            # 剑尖
+        (ln * 0.15, w / 2.0), # 右肩
         (0.0, w / 2.0),      # 右尾
-        (-l * 0.15, 0.0),    # 尾部凹槽
+        (-ln * 0.15, 0.0),    # 尾部凹槽
         (0.0, -w / 2.0),     # 左尾
-        (l * 0.15, -w / 2.0),# 左肩
-        (l, 0.0),            # 回到剑尖
+        (ln * 0.15, -w / 2.0),# 左肩
+        (ln, 0.0),            # 回到剑尖
     ]
     pts = []
     for f, p in local:

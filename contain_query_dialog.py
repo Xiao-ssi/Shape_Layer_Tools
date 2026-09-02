@@ -134,13 +134,13 @@ class ContainQueryDialog(QDialog):
 
     def refresh_layers(self):
         src_layers, poly_layers = [], []
-        for lid, l in QgsProject.instance().mapLayers().items():
-            if not isinstance(l, QgsVectorLayer):
+        for lid, ly in QgsProject.instance().mapLayers().items():
+            if not isinstance(ly, QgsVectorLayer):
                 continue
             # 需查询图层可以是任意矢量图层（点/线/面，甚至无几何）
-            src_layers.append((l.name(), lid))
-            if l.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry:
-                poly_layers.append((l.name(), lid))
+            src_layers.append((ly.name(), lid))
+            if ly.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry:
+                poly_layers.append((ly.name(), lid))
         if not poly_layers:
             poly_layers = [('（无面图层面）', '')]
         for cmb, layers in ((self.cmb_pt, src_layers), (self.cmb_poly, poly_layers)):
@@ -423,7 +423,7 @@ class ContainQueryDialog(QDialog):
         wb.save(path)
 
     def _unique_name(self, base):
-        existing = {l.name() for l in QgsProject.instance().mapLayers().values()}
+        existing = {ly.name() for ly in QgsProject.instance().mapLayers().values()}
         if base not in existing:
             return base
         i = 2

@@ -99,8 +99,8 @@ class SearchWidget(QWidget):
     def refresh_layers(self):
         self.cmb_s_layer.blockSignals(True)
         self.cmb_s_layer.clear()
-        for lid, l in QgsProject.instance().mapLayers().items():
-            self.cmb_s_layer.addItem(l.name(), lid)
+        for lid, ly in QgsProject.instance().mapLayers().items():
+            self.cmb_s_layer.addItem(ly.name(), lid)
         self.cmb_s_layer.blockSignals(False)
         self.on_s_layer_changed()
 
