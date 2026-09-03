@@ -14,4 +14,4 @@ category=Vector
 icon=icons/icon.svg
 experimental=False
 deprecated=False
-changelog=1.0.3 修复 Qt6 兼容问题与代码规范（E741），更新 metadata。
+changelog=1.0.3 修复 Qt6 兼容问题与代码规范（E741），更新 metadata；1.0.0 首个版本。

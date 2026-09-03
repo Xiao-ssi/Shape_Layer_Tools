@@ -6,11 +6,9 @@ import os
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMenu
 
-from .excel_shape_layer_dialog import (
-    ExcelShapeLayerDialog,
-    SearchDialog,
-    ContainQueryDialog,
-)
+from .excel_shape_layer_dialog import ExcelShapeLayerDialog
+from .search_dialog import SearchDialog
+from .contain_query_dialog import ContainQueryDialog
 from .buffer_dialog import BufferDialog
 
 
