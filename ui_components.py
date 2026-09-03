@@ -38,7 +38,7 @@ class ColorButton(QPushButton):
 
     def _pick(self):
         dlg = ColorPickDialog(self, self.color)
-        if dlg.exec_():
+        if dlg.exec():
             self.setColor(dlg.result_color())
 
 

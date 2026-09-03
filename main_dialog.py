@@ -403,7 +403,7 @@ class ExcelShapeLayerDialog(QDialog):
             'width': _to_float(self.edit_width.text()),
         }
         dlg = ClassifyConfigDialog(self, self.headers, vals, self.classify_config, defaults)
-        if dlg.exec_():
+        if dlg.exec():
             self.classify_config = dlg.result_config()
             self._fill_classify_table(vals)
 
@@ -599,7 +599,7 @@ class ExcelShapeLayerDialog(QDialog):
             self.iface.layerTreeView().refreshLayerSymbology(layer.id())
             self.iface.layerTreeView().setCurrentLayer(layer)
         except Exception as e:
-            QgsMessageLog.logMessage('生成后定位/刷新画布失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
+            QgsMessageLog.logMessage('生成后定位/刷新画布失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
 
         msg = '已生成图层 "%s"，共 %d 个要素。' % (layer.name(), len(feats))
         if skipped:

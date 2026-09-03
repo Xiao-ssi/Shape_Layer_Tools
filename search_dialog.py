@@ -257,7 +257,7 @@ class SearchWidget(QWidget):
             try:
                 self.canvas.scene().removeItem(band)
             except Exception as e:
-                QgsMessageLog.logMessage('移除闪烁带失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
+                QgsMessageLog.logMessage('移除闪烁带失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
             self._flash_band = None
 
     def goto_selected(self):
@@ -301,7 +301,7 @@ class SearchWidget(QWidget):
         b = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         b.accepted.connect(dlg.accept); b.rejected.connect(dlg.reject)
         v.addWidget(b)
-        if not dlg.exec_():
+        if not dlg.exec():
             return
         selected = [lw.item(i).text() for i in range(lw.count())
                     if lw.item(i).checkState() == Qt.CheckState.Checked]

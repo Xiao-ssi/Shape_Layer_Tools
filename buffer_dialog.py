@@ -200,7 +200,7 @@ class BufferDialog(QDialog):
             if buf and not buf.isEmpty():
                 return buf
         except Exception as e:
-            QgsMessageLog.logMessage('对称缓冲兜底失败: %s' % e, 'Shape_Layer_Tools', Qgis.Critical)
+            QgsMessageLog.logMessage('对称缓冲兜底失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Critical)
         return None
 
     def _build_side_band(self, line_wg, dist, side_left):
@@ -363,7 +363,7 @@ class BufferDialog(QDialog):
             canvas.refresh()
             self.iface.layerTreeView().refreshLayerSymbology(out_layer.id())
         except Exception as e:
-            QgsMessageLog.logMessage('生成后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
+            QgsMessageLog.logMessage('生成后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
 
         self.lbl_status.setText('完成。')
         QMessageBox.information(

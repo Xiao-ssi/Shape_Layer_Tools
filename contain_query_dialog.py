@@ -49,13 +49,13 @@ def _first_point(qg):
         p = qg.vertexAt(0)
         return QgsPointXY(p.x(), p.y())
     except Exception as e:
-        QgsMessageLog.logMessage('取起点坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
+        QgsMessageLog.logMessage('取起点坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
     try:
         if qg.type() == QgsWkbTypes.GeometryType.PointGeometry:
             pt = qg.asPoint()
             return QgsPointXY(pt.x(), pt.y())
     except Exception as e:
-        QgsMessageLog.logMessage('取点几何坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
+        QgsMessageLog.logMessage('取点几何坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
     return None
 
 
@@ -301,7 +301,7 @@ class ContainQueryDialog(QDialog):
                         d = pg.distance(start_g) * 111319.9
                     except Exception as e:
                         QgsMessageLog.logMessage('计算距离失败, 跳过该候选面: %s' % e,
-                                                  'Shape_Layer_Tools', Qgis.Warning)
+                                                  'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
                         continue
                     if closest is None or d < cdist:
                         closest, cdist = pg, d
@@ -383,7 +383,7 @@ class ContainQueryDialog(QDialog):
             canvas.refresh()
             self.iface.layerTreeView().refreshLayerSymbology(out_layer.id())
         except Exception as e:
-            QgsMessageLog.logMessage('导出后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.Warning)
+            QgsMessageLog.logMessage('导出后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
 
         # 导出表格（保留全部匹配结果）
         out_path = self.edit_out.text().strip()
