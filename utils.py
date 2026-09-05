@@ -6,6 +6,21 @@ import random
 from qgis.PyQt.QtGui import QColor
 
 
+# 会话级设置记忆：仅在本次 QGIS 运行期间生效，重启 QGIS（Python 进程销毁）后自动重置。
+# 结构: {"对话框名": {"项名": 值}}，仅缓存可序列化的简单类型(str/int/float/bool)。
+_SESSION = {}
+
+
+def session_get(dialog, key, default=None):
+    """读取会话记忆中的设置值。"""
+    return _SESSION.setdefault(dialog, {}).get(key, default)
+
+
+def session_set(dialog, key, value):
+    """写入会话记忆中的设置值。"""
+    _SESSION.setdefault(dialog, {})[key] = value
+
+
 def _to_float(value, default=None):
     try:
         return float(value)

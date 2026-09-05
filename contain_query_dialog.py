@@ -40,6 +40,7 @@ from qgis.PyQt.QtWidgets import (
     QProgressBar,
     QApplication,
 )
+from .utils import session_get, session_set
 
 
 def _first_point(qg):
@@ -68,6 +69,7 @@ class ContainQueryDialog(QDialog):
         self.setWindowTitle('图层包含查询')
         self.resize(560, 420)
         self._build_ui()
+        self._restore_session()
         self.refresh_layers()
 
     def _build_ui(self):
@@ -75,9 +77,11 @@ class ContainQueryDialog(QDialog):
 
         grp = QGroupBox('图层选择')
         form = QFormLayout(grp)
-        self.cmb_pt = QComboBox(); self.cmb_pt.currentIndexChanged.connect(self._on_layer_changed)
+        self.cmb_pt = QComboBox(); self.cmb_pt.setObjectName('cmb_pt')
+        self.cmb_pt.currentIndexChanged.connect(self._on_layer_changed)
         form.addRow('需查询图层:', self.cmb_pt)
-        self.cmb_poly = QComboBox(); self.cmb_poly.currentIndexChanged.connect(self._on_layer_changed)
+        self.cmb_poly = QComboBox(); self.cmb_poly.setObjectName('cmb_poly')
+        self.cmb_poly.currentIndexChanged.connect(self._on_layer_changed)
         form.addRow('区域图层（范围内）:', self.cmb_poly)
         btn_refresh = QPushButton('刷新图层列表'); btn_refresh.clicked.connect(self.refresh_layers)
         form.addRow('', btn_refresh)
@@ -148,8 +152,41 @@ class ContainQueryDialog(QDialog):
             cmb.clear()
             for name, lid in layers:
                 cmb.addItem(name, lid)
+            # 恢复上次选择的图层
+            prev = session_get('contain', cmb.objectName())
+            if prev:
+                idx = cmb.findData(prev)
+                if idx >= 0:
+                    cmb.setCurrentIndex(idx)
             cmb.blockSignals(False)
         self._on_layer_changed()
+
+    def _restore_session(self):
+        self.chk_nearest.setChecked(bool(session_get('contain', 'nearest', self.chk_nearest.isChecked())))
+        try:
+            self.spin_dist.setValue(int(session_get('contain', 'dist', self.spin_dist.value())))
+        except Exception:
+            pass
+        multi = bool(session_get('contain', 'multi', self.rb_multi.isChecked()))
+        self.rb_multi.setChecked(multi); self.rb_single.setChecked(not multi)
+        self.chk_pct.setChecked(bool(session_get('contain', 'pct_on', self.chk_pct.isChecked())))
+        try:
+            self.spin_pct.setValue(int(session_get('contain', 'pct', self.spin_pct.value())))
+        except Exception:
+            pass
+        outp = session_get('contain', 'out_path')
+        if outp:
+            self.edit_out.setText(outp)
+
+    def _save_session(self):
+        session_set('contain', 'cmb_pt', self.cmb_pt.currentData())
+        session_set('contain', 'cmb_poly', self.cmb_poly.currentData())
+        session_set('contain', 'nearest', self.chk_nearest.isChecked())
+        session_set('contain', 'dist', self.spin_dist.value())
+        session_set('contain', 'multi', self.rb_multi.isChecked())
+        session_set('contain', 'pct_on', self.chk_pct.isChecked())
+        session_set('contain', 'pct', self.spin_pct.value())
+        session_set('contain', 'out_path', self.edit_out.text())
 
     def _on_layer_changed(self):
         if not self.edit_out.text():
@@ -185,6 +222,7 @@ class ContainQueryDialog(QDialog):
             self.btn_run.setEnabled(False)
             self.progress.setValue(0)
             QApplication.processEvents()
+            self._save_session()
             self._do_query()
         except Exception as exc:
             import traceback; traceback.print_exc()

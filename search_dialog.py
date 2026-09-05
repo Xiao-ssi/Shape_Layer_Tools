@@ -14,6 +14,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import Qt, QSettings, QTimer
 from qgis.gui import QgsRubberBand
 from qgis.PyQt.QtGui import QColor
+from .utils import session_get, session_set
 from qgis.PyQt.QtWidgets import (
     QWidget,
     QDialog,
@@ -49,6 +50,13 @@ class SearchWidget(QWidget):
         self._flash_band = None
         self._flash_timer = None
         self._build_ui()
+        # 恢复本次运行期间上次的搜索设置
+        txt = session_get('search', 'text')
+        if txt:
+            self.edit_s_text.setText(txt)
+        md = session_get('search', 'mode')
+        if md is not None:
+            self.cmb_s_mode.setCurrentIndex(md)
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -101,6 +109,11 @@ class SearchWidget(QWidget):
         self.cmb_s_layer.clear()
         for lid, ly in QgsProject.instance().mapLayers().items():
             self.cmb_s_layer.addItem(ly.name(), lid)
+        prev = session_get('search', 'layer_id')
+        if prev:
+            idx = self.cmb_s_layer.findData(prev)
+            if idx >= 0:
+                self.cmb_s_layer.setCurrentIndex(idx)
         self.cmb_s_layer.blockSignals(False)
         self.on_s_layer_changed()
 
@@ -125,11 +138,21 @@ class SearchWidget(QWidget):
         if idx < 0:
             idx = 0
         self.cmb_s_field.setCurrentIndex(max(0, min(idx, self.cmb_s_field.count() - 1)))
+        # 若本次运行已保存该图层的字段选择，则覆盖默认值
+        saved_field = session_get('search', 'field')
+        if saved_field:
+            fidx = self.cmb_s_field.findText(saved_field)
+            if fidx >= 0:
+                self.cmb_s_field.setCurrentIndex(fidx)
 
     def on_search(self):
         layer = self._current_layer()
         if layer is None:
             QMessageBox.warning(self, '提示', '请先选择一个图层'); return
+        session_set('search', 'layer_id', layer.id())
+        session_set('search', 'field', self.cmb_s_field.currentText())
+        session_set('search', 'text', self.edit_s_text.text())
+        session_set('search', 'mode', self.cmb_s_mode.currentIndex())
         field_name = self.cmb_s_field.currentText()
         idx = layer.fields().indexOf(field_name)
         if idx < 0:

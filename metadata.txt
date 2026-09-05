@@ -1,17 +1,18 @@
 [general]
 name=网优图层工具 (Shape Layer Tools)
 qgisMinimumVersion=3.16
-description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx. More features in development.
-version=1.0.3
+description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink layers, and analyze co-sited/co-covered networks for 3CC composition and 2G/3G/4G/5G co-sited evaluation. More features in development.
+version=1.0.4
 author=肖司
 email=xiaossi@139.com
-about=Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer (expand) or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers.
+about=Network optimization toolkit. Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer (expand) or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers. Analyze co-sited and co-covered networks: find co-sited data by coordinate range, and identify co-coverage by the overlap ratio between two sectors/shapes — ideal for 3CC composition planning and 2G/3G/4G/5G co-sited/co-covered evaluation.
+网优图层工具是一套轻量、免模板、即装的无线网络图层分析与制图工具集，无需复杂配置即可快速上手。它支持从 Excel 一键批量生成圆形、扇形、剑形、矩形等多种形状图层，并支持导出为 SHP/TAB/KML/KMZ格式，方便与各方协作；内置的包含查询、缓冲膨胀缩小、同站同覆盖分析等功能，可帮助评估 3CC 组网、2/3/4/5G 同站同覆盖核查等网络优化工作的效率。
 tracker=https://github.com/Xiao-ssi/Shape_Layer_Tools/issues
 repository=https://github.com/Xiao-ssi/Shape_Layer_Tools
 homepage=https://github.com/Xiao-ssi/Shape_Layer_Tools
-tags=excel,shape,circle,sector,sword,shp,kml,kmz,多边形,图形,缓冲,膨胀
+tags=excel,shape,circle,sector,sword,shp,kml,kmz,多边形,图形,缓冲,膨胀,同站,同覆盖,co-sited,co-coverage,3cc,5g,网络优化,网优
 category=Vector
 icon=icons/icon.svg
 experimental=False
 deprecated=False
-changelog=1.0.3 修复 Qt6 兼容问题与代码规范（E741），更新 metadata；1.0.0 首个版本。
+changelog=1.0.4 新增同站和同覆盖分析功能，可针对经纬度范围查找同站数据，根据两个扇区/绘制图形区域重叠度判断同覆盖，可用于 3CC 组网评估、2/3/4/5G 同站同覆盖评估等工作； 1.0.3 修复 Qt6 兼容问题与代码规范（E741），更新 metadata； 1.0.0 首个版本。

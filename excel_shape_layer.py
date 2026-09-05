@@ -10,6 +10,7 @@ from .excel_shape_layer_dialog import ExcelShapeLayerDialog
 from .search_dialog import SearchDialog
 from .contain_query_dialog import ContainQueryDialog
 from .buffer_dialog import BufferDialog
+from .overlap_dialog import OverlapDialog
 
 
 class ExcelShapeLayer(object):
@@ -22,6 +23,7 @@ class ExcelShapeLayer(object):
         self.search_dlg = None
         self.contain_dlg = None
         self.buffer_dlg = None
+        self.overlap_dlg = None
 
     @staticmethod
     def _icon_path(name='icon.svg'):
@@ -52,7 +54,8 @@ class ExcelShapeLayer(object):
         action_search = self._new_action('icon_search.svg', '搜索数据', self.run_search)
         action_contain = self._new_action('icon_contain.svg', '图层包含查询', self.run_contain_query)
         action_buffer = self._new_action('icon_buffer.svg', '缓冲膨胀缩小', self.run_buffer_query)
-        for a in (action_make, action_export, action_search, action_contain, action_buffer):
+        action_overlap = self._new_action('icon_overlap.svg', '同站同覆盖分析', self.run_overlap_query)
+        for a in (action_make, action_export, action_search, action_contain, action_buffer, action_overlap):
             self.toolbar.addAction(a)
 
         # 同时保留顶层菜单"网优图层工具"
@@ -63,6 +66,7 @@ class ExcelShapeLayer(object):
         self.menu.addAction(action_search)
         self.menu.addAction(action_contain)
         self.menu.addAction(action_buffer)
+        self.menu.addAction(action_overlap)
         self.iface.mainWindow().menuBar().addMenu(self.menu)
 
     def unload(self):
@@ -100,3 +104,11 @@ class ExcelShapeLayer(object):
         self.buffer_dlg.show()
         self.buffer_dlg.raise_()
         self.buffer_dlg.activateWindow()
+
+    def run_overlap_query(self):
+        if self.overlap_dlg is None:
+            self.overlap_dlg = OverlapDialog(self.iface, self.iface.mainWindow())
+        self.overlap_dlg.refresh_layers()
+        self.overlap_dlg.show()
+        self.overlap_dlg.raise_()
+        self.overlap_dlg.activateWindow()

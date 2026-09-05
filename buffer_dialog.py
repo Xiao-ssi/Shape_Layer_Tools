@@ -33,6 +33,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QApplication,
 )
+from .utils import session_get, session_set
 
 
 class BufferDialog(QDialog):
@@ -44,6 +45,7 @@ class BufferDialog(QDialog):
         self.setWindowTitle('图层缓冲膨胀缩小')
         self.resize(460, 320)
         self._build_ui()
+        self._restore_session()
         self.refresh_layers()
 
     def _build_ui(self):
@@ -107,8 +109,29 @@ class BufferDialog(QDialog):
             self.cmb_layer.addItem('（无几何图层面）', '')
         for name, lid in items:
             self.cmb_layer.addItem(name, lid)
+        # 恢复上次选择的图层
+        prev = session_get('buffer', 'layer_id')
+        if prev:
+            idx = self.cmb_layer.findData(prev)
+            if idx >= 0:
+                self.cmb_layer.setCurrentIndex(idx)
         self.cmb_layer.blockSignals(False)
         self._on_layer_changed()
+
+    def _restore_session(self):
+        dist = session_get('buffer', 'dist', self.edit_dist.value())
+        try:
+            self.edit_dist.setValue(float(dist))
+        except Exception:
+            pass
+        dir_idx = session_get('buffer', 'dir', 0)
+        (self.rb_out if dir_idx == 0 else self.rb_in if dir_idx == 1 else self.rb_both).setChecked(True)
+
+    def _save_session(self):
+        session_set('buffer', 'layer_id', self.cmb_layer.currentData())
+        session_set('buffer', 'dist', self.edit_dist.value())
+        dir_idx = 0 if self.rb_out.isChecked() else 1 if self.rb_in.isChecked() else 2
+        session_set('buffer', 'dir', dir_idx)
 
     def _current_layer(self):
         lid = self.cmb_layer.currentData()
@@ -266,6 +289,7 @@ class BufferDialog(QDialog):
             self.btn_run.setEnabled(True)
 
     def _do_buff(self):
+        self._save_session()
         src = self._current_layer()
         if src is None:
             QMessageBox.warning(self, '提示', '请先选择一个要膨胀的图层。')
