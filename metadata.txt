@@ -14,4 +14,4 @@ category=Vector
 icon=icons/icon.svg
 experimental=False
 deprecated=False
-changelog=1.0.4 新增同站和同覆盖分析功能，可针对经纬度范围查找同站数据，根据两个扇区/绘制图形区域重叠度判断同覆盖，可用于 3CC 组网评估、2/3/4/5G 同站同覆盖评估等工作； 1.0.3 修复 Qt6 兼容问题与代码规范（E741），更新 metadata； 1.0.0 首个版本。
+changelog=1.0.4 新增同站和同覆盖分析功能，可针对经纬度范围查找同站数据，根据两个扇区/绘制图形区域重叠度判断同覆盖，可用于 3CC 组网评估、2/3/4/5G 同站同覆盖评估等工作。
