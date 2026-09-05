@@ -1,5 +1,5 @@
 [general]
-name=网优图层工具 (Shape Layer Tools)
+name=shape_layer_tools
 qgisMinimumVersion=3.16
 description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink layers, and analyze co-sited/co-covered networks for 3CC composition and 2G/3G/4G/5G co-sited evaluation. More features in development.
 version=1.0.4
