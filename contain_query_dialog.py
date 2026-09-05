@@ -165,15 +165,15 @@ class ContainQueryDialog(QDialog):
         self.chk_nearest.setChecked(bool(session_get('contain', 'nearest', self.chk_nearest.isChecked())))
         try:
             self.spin_dist.setValue(int(session_get('contain', 'dist', self.spin_dist.value())))
-        except Exception:
-            pass
+        except (TypeError, ValueError, AttributeError) as e:
+            QgsMessageLog.logMessage('恢复查询距离设置失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
         multi = bool(session_get('contain', 'multi', self.rb_multi.isChecked()))
         self.rb_multi.setChecked(multi); self.rb_single.setChecked(not multi)
         self.chk_pct.setChecked(bool(session_get('contain', 'pct_on', self.chk_pct.isChecked())))
         try:
             self.spin_pct.setValue(int(session_get('contain', 'pct', self.spin_pct.value())))
-        except Exception:
-            pass
+        except (TypeError, ValueError, AttributeError) as e:
+            QgsMessageLog.logMessage('恢复面积占比设置失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
         outp = session_get('contain', 'out_path')
         if outp:
             self.edit_out.setText(outp)

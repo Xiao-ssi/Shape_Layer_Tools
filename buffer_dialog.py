@@ -122,8 +122,8 @@ class BufferDialog(QDialog):
         dist = session_get('buffer', 'dist', self.edit_dist.value())
         try:
             self.edit_dist.setValue(float(dist))
-        except Exception:
-            pass
+        except (TypeError, ValueError, AttributeError) as e:
+            QgsMessageLog.logMessage('恢复扩展距离设置失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
         dir_idx = session_get('buffer', 'dir', 0)
         (self.rb_out if dir_idx == 0 else self.rb_in if dir_idx == 1 else self.rb_both).setChecked(True)
 
@@ -344,7 +344,9 @@ class BufferDialog(QDialog):
                 skipped += 1
                 continue
             if not g.makeValid():
-                pass
+                skipped += 1
+                _skip('源几何修复失败')
+                continue
             bg = self._buffer_geometry(g, crs, buff_dist, side)
             if bg is None:
                 _skip('缓冲生成失败(_buffer_geometry返回None)')

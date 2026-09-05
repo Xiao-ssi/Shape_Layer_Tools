@@ -15,7 +15,9 @@ from qgis.core import (
     QgsDistanceArea,
     QgsPointXY,
     QgsSpatialIndex,
+    QgsMessageLog,
 )
+from qgis.core import Qgis
 from qgis.PyQt.QtCore import QVariant, Qt
 from qgis.PyQt.QtWidgets import (
     QDialog,
@@ -44,19 +46,20 @@ def _first_point(qg):
     try:
         p = qg.vertexAt(0)
         return QgsPointXY(p.x(), p.y())
-    except Exception:
-        pass
+    except Exception as e:
+        QgsMessageLog.logMessage('取起点坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
     try:
         if qg.type() == QgsWkbTypes.GeometryType.PointGeometry:
             pt = qg.asPoint()
             return QgsPointXY(pt.x(), pt.y())
-    except Exception:
-        pass
+    except Exception as e:
+        QgsMessageLog.logMessage('取点几何坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
     try:
         c = qg.centroid()
         return QgsPointXY(c.x(), c.y()) if c is not None else None
-    except Exception:
-        return None
+    except Exception as e:
+        QgsMessageLog.logMessage('取质心坐标失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+    return None
 
 
 class OverlapDialog(QDialog):
@@ -170,12 +173,12 @@ class OverlapDialog(QDialog):
     def _restore_session(self):
         try:
             self.spin_pct.setValue(int(session_get('overlap', 'pct', self.spin_pct.value())))
-        except Exception:
-            pass
+        except (TypeError, ValueError, AttributeError) as e:
+            QgsMessageLog.logMessage('恢复重叠比例设置失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
         try:
             self.spin_dist.setValue(int(session_get('overlap', 'dist', self.spin_dist.value())))
-        except Exception:
-            pass
+        except (TypeError, ValueError, AttributeError) as e:
+            QgsMessageLog.logMessage('恢复距离设置失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
         d = session_get('overlap', 'out_dir')
         if d:
             self.edit_dir.setText(d)
@@ -253,8 +256,8 @@ class OverlapDialog(QDialog):
                 g2 = g.makeValid()
                 if g2 is not None and not g2.isEmpty():
                     return g2
-        except Exception:
-            pass
+        except Exception as e:
+            QgsMessageLog.logMessage('修复退化几何失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
         return g
 
     def _do_analysis(self):
@@ -300,7 +303,8 @@ class OverlapDialog(QDialog):
             if xform is not None:
                 try:
                     geom.transform(xform)
-                except Exception:
+                except Exception as e:
+                    QgsMessageLog.logMessage('对比要素坐标变换失败, 跳过: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
                     continue
             sp = _first_point(geom)
             if sp is None:
