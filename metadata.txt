@@ -1,0 +1,18 @@
+[general]
+name=shape_layer_tools
+qgisMinimumVersion=3.16
+description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer and shrink layers, and analyze co-sited / co-covered networks for 3CC composition and 2G/3G/4G/5G co-sited evaluation.
+version=1.0.6
+author=肖司
+email=xiaossi@139.com
+about=Network optimization toolkit. Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers. Analyze co-sited and co-covered networks: find co-sited data by coordinate range, and identify co-coverage by the overlap ratio between two sectors or drawn shapes, useful for 3CC composition planning and 2G/3G/4G/5G co-sited and co-covered evaluation.网络优化常用工具。无需固定模板，即可根据包含经度、纬度、方位角和大小字段生成各种形状（圆形、扇形、剑形、矩形等）的矢量图层。可将图层导出为SHP、TAB、KML和KMZ格式。快速查询图形、膨胀扩大或缩小图层、分析同站同覆盖。
+
+tracker=https://github.com/Xiao-ssi/Shape_Layer_Tools/issues
+repository=https://github.com/Xiao-ssi/Shape_Layer_Tools
+homepage=https://github.com/Xiao-ssi/Shape_Layer_Tools
+tags=excel,shape,circle,sector,sword,shp,kml,kmz,co-sited,co-coverage,3cc,5g,network-optimization
+category=Vector
+icon=icons/icon.svg
+experimental=False
+deprecated=False
+changelog=1.0.6 added co-sited and co-coverage analysis; find co-sited data by coordinate range and identify co-overlap by shape overlap ratio, useful for 3CC composition and 2G/3G/4G/5G co-sited evaluation.增加同站和同覆盖分析功能，可根据距离、图形重叠比例评估出同站同覆盖，可用于3CC评估或者2345G网络同覆盖评估，欢迎反馈问题。

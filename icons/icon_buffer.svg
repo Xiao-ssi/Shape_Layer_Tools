@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect x="4" y="4" width="56" height="56" rx="8" fill="#17a2a3"/>
+  <rect x="26" y="26" width="12" height="12" rx="2" fill="#ffffff"/>
+  <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M32 9 v9"/>
+    <path d="M32 55 v-9"/>
+    <path d="M9 32 h9"/>
+    <path d="M55 32 h-9"/>
+  </g>
+  <g stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <polyline points="26,15 32,9 38,15"/>
+    <polyline points="26,49 32,55 38,49"/>
+    <polyline points="15,26 9,32 15,38"/>
+    <polyline points="49,26 55,32 49,38"/>
+  </g>
+</svg>
