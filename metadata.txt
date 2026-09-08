@@ -1,17 +1,17 @@
 [general]
-name=shape layer tools
+name=网优图层工具 (Shape Layer Tools)
 qgisMinimumVersion=3.16
 description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx. More features in development.
-version=1.0.12
+version=1.0.13
 author=肖司
 email=xiaossi@139.com
 about=Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer (expand) or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers.
 tracker=https://github.com/Xiao-ssi/Shape_Layer_Tools/issues
 repository=https://github.com/Xiao-ssi/Shape_Layer_Tools
 homepage=https://github.com/Xiao-ssi/Shape_Layer_Tools
-tags=excel,shape,circle,sector,sword,shp,kml,kmz,co-sited,co-coverage,3cc,5g,network-optimization
+tags=excel,shape,circle,sector,sword,shp,kml,kmz,多边形,图形,缓冲,膨胀
 category=Vector
 icon=icons/icon.svg
 experimental=False
 deprecated=False
-changelog=1.0.12 added co-sited and co-coverage analysis; find co-sited data by coordinate range and identify co-overlap by shape overlap ratio, useful for 3CC composition and 2G/3G/4G/5G co-sited evaluation.
+changelog=1.0.13 修复 Qt6 兼容问题与代码规范（E741），新增同站同覆盖计算，可根据经纬度计算同站，根据图形重叠度判断同覆盖。
