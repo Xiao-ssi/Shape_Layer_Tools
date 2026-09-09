@@ -2,15 +2,16 @@
 
 Pluggable tools for network optimization (net-op) work in QGIS, providing common vector-layer operations.
 
-A QGIS plugin with layer tools for network optimization: generate sector shapes from an Excel table, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx.
+A QGIS plugin with layer tools for network optimization: generate sector shapes from an Excel table, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络同覆盖评估、3CC组合评估）。
 
 ## 功能 / Features
 
 - **制作图层**：无需固定模板，Excel 表中含经纬度、方位角、尺寸字段，即可生成圆形、扇形、刀形等不同形状的矢量图层。
-- **导出图层**：将已加载的矢量图层导出为 SHP / TAB / KML / KMZ / xlsx 等格式。
+- **导出图层**：将已加载的矢量图层导出为 SHP / TAB / KML / KMZ / xlsx 等格式，方便其他软件使用。
 - **搜索数据**：在图层中检索数据并跳转到对应位置、闪烁定位。
 - **图层包含查询**：查找指定区域图层中包含了哪些点/线/面要素，支持按起始点坐标或面积占比判断，可导出查询结果。
 - **缓冲膨胀缩小**：对点、线、面图层沿边界向外/向内扩大或缩小指定距离，可生成单侧缓冲。
+- **同站同覆盖分析**：分析多个图层中，根据设置距离和重叠度，判断是否存在同站同覆盖情况，支持导出分析结果。
 
 ## 安装
 
