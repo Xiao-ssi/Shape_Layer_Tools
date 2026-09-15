@@ -2,7 +2,7 @@
 name=网优图层工具 (Shape Layer Tools)
 qgisMinimumVersion=3.16
 description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx. More features in development.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络同覆盖评估、3CC组合评估）。
-version=1.1.0
+version=1.1.1
 author=肖司
 email=xiaossi@139.com
 about=Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer (expand) or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络同覆盖评估、3CC组合评估）。
@@ -14,4 +14,4 @@ category=Vector
 icon=icons/icon.svg
 experimental=False
 deprecated=False
-changelog=1.1.0 修复 Qt6 兼容问题与代码规范（E741），新增同站同覆盖计算，可根据经纬度计算同站，根据图形重叠度判断同覆盖。
+changelog=1.1.1 修复同覆盖判断条件，可指定分析类型，并修复部分小Bug。

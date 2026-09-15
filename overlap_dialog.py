@@ -37,6 +37,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QApplication,
+    QCheckBox,
 )
 from .utils import session_get, session_set
 
@@ -69,7 +70,7 @@ class OverlapDialog(QDialog):
         super().__init__(parent)
         self.iface = iface
         self.setWindowTitle('同站同覆盖分析')
-        self.resize(580, 500)
+        self.resize(620, 660)
         self._loading_fields = False
         self._build_ui()
         self._restore_session()
@@ -110,12 +111,51 @@ class OverlapDialog(QDialog):
         fo.addRow('', lbl_note)
         lay.addWidget(opt)
 
-        fg = QGroupBox('需导出的字段(勾选)')
+        atype = QGroupBox('分析类型（可多选，结果仅包含勾选的类型）')
+        fa = QVBoxLayout(atype)
+        row_types = QHBoxLayout()
+        # 选项排列顺序：单条件在前，复合条件在后，便于理解
+        self.chk_same_site = QCheckBox('【同站】')
+        self.chk_same_site.setToolTip('仅当起始点距离在设定范围内判定为同站。')
+        self.chk_overlap = QCheckBox('【同覆盖】')
+        self.chk_overlap.setToolTip('仅当形状重叠度达到设定比例判定为同覆盖。')
+        self.chk_both = QCheckBox('【同站且同覆盖】')
+        self.chk_both.setToolTip('同时满足起始点距离且形状重叠度达标，判定为同站且同覆盖。')
+        for cb in (self.chk_same_site, self.chk_overlap, self.chk_both):
+            cb.setChecked(True)
+            row_types.addWidget(cb)
+        row_types.addStretch()
+        fa.addLayout(row_types)
+        lbl_atype = QLabel('勾选后分析结果将只保留勾选的类型；三个条件互斥，同一匹配项只会归属一种类型。')
+        lbl_atype.setStyleSheet('color:#888;')
+        fa.addWidget(lbl_atype)
+        lay.addWidget(atype)
+
+        fg = QGroupBox('源图层字段（请勾选，默认全选）')
         ff = QVBoxLayout(fg)
-        self.lst_fields = QListWidget()
-        self.lst_fields.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        ff.addWidget(self.lst_fields)
+        self.lst_src_fields = QListWidget()
+        self.lst_src_fields.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        ff.addWidget(self.lst_src_fields)
         lay.addWidget(fg)
+
+        cg = QGroupBox('对比图层字段（请勾选需要导出的字段，默认全部不选中）')
+        cv = QVBoxLayout(cg)
+        self.lst_cmp_fields = QListWidget()
+        self.lst_cmp_fields.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        cv.addWidget(self.lst_cmp_fields)
+        hl = QHBoxLayout()
+        btn_all = QPushButton('全选')
+        btn_all.clicked.connect(self._check_all_cmp)
+        btn_none = QPushButton('全不选')
+        btn_none.clicked.connect(self._check_none_cmp)
+        lbl_req = QLabel('至少勾选 1 项')
+        lbl_req.setStyleSheet('color:#c00;')
+        hl.addWidget(lbl_req)
+        hl.addStretch()
+        hl.addWidget(btn_all)
+        hl.addWidget(btn_none)
+        cv.addLayout(hl)
+        lay.addWidget(cg)
 
         out = QGroupBox('导出到本地文件夹')
         fout = QFormLayout(out)
@@ -189,13 +229,9 @@ class OverlapDialog(QDialog):
         session_set('overlap', 'pct', self.spin_pct.value())
         session_set('overlap', 'dist', self.spin_dist.value())
         session_set('overlap', 'out_dir', self.edit_dir.text())
-        checked = [self.lst_fields.item(i).text()
-                   for i in range(self.lst_fields.count())
-                   if self.lst_fields.item(i).checkState() == Qt.CheckState.Checked]
-        session_set('overlap', 'fields', checked)
 
     def _on_src_changed(self):
-        # 源图层变化：同步刷新字段勾选区（导出字段取自源图层）
+        # 源图层变化：同步刷新源字段列表（对比字段由对比图层管控）
         self._refresh_fields()
 
     @staticmethod
@@ -207,24 +243,47 @@ class OverlapDialog(QDialog):
         if self._loading_fields:
             return
         self._loading_fields = True
+        # 源图层字段：默认全部勾选，用户可自主选择要导出的字段
         ly = self._layer_from_cmb(self.cmb_src)
-        self.lst_fields.clear()
+        self.lst_src_fields.clear()
         if ly is not None:
-            saved = session_get('overlap', 'fields')
-            saved_set = set(saved) if saved else None
             for f in ly.fields():
                 item = QListWidgetItem(f.name())
                 item.setFlags((item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                               & ~Qt.ItemFlag.ItemIsAutoTristate)
+                item.setCheckState(Qt.CheckState.Checked)
+                self.lst_src_fields.addItem(item)
+        # 对比图层字段：默认全部不选中，由用户选择要导出的字段
+        lyc = self._layer_from_cmb(self.cmb_cmp)
+        self.lst_cmp_fields.clear()
+        if lyc is not None:
+            for f in lyc.fields():
+                item = QListWidgetItem(f.name())
+                item.setFlags((item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                              & ~Qt.ItemFlag.ItemIsAutoTristate)
                 item.setCheckState(Qt.CheckState.Unchecked)
-                self.lst_fields.addItem(item)
-            # 默认全部勾选；若有会话记忆则按记忆勾选
-            for i in range(self.lst_fields.count()):
-                name = self.lst_fields.item(i).text()
-                checked = saved_set is None or name in saved_set
-                self.lst_fields.item(i).setCheckState(
-                    Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+                self.lst_cmp_fields.addItem(item)
         self._loading_fields = False
+
+    def _check_all_cmp(self):
+        for i in range(self.lst_cmp_fields.count()):
+            self.lst_cmp_fields.item(i).setCheckState(Qt.CheckState.Checked)
+
+    def _check_none_cmp(self):
+        for i in range(self.lst_cmp_fields.count()):
+            self.lst_cmp_fields.item(i).setCheckState(Qt.CheckState.Unchecked)
+
+    def _selected_src_fields(self):
+        """返回当前勾选的源图层字段名列表。"""
+        return [self.lst_src_fields.item(i).text()
+                for i in range(self.lst_src_fields.count())
+                if self.lst_src_fields.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _selected_cmp_fields(self):
+        """返回当前勾选的对比图层字段名列表。"""
+        return [self.lst_cmp_fields.item(i).text()
+                for i in range(self.lst_cmp_fields.count())
+                if self.lst_cmp_fields.item(i).checkState() == Qt.CheckState.Checked]
 
     def on_browse_dir(self):
         path = QFileDialog.getExistingDirectory(self, '选择保存文件夹',
@@ -271,11 +330,41 @@ class OverlapDialog(QDialog):
             QMessageBox.warning(self, '提示', '请选择要保存结果表格的文件夹。')
             return
 
-        selected_fields = [self.lst_fields.item(i).text()
-                           for i in range(self.lst_fields.count())
-                           if self.lst_fields.item(i).checkState() == Qt.CheckState.Checked]
-        if not selected_fields:
-            QMessageBox.warning(self, '提示', '请至少勾选一个需要导出的字段。')
+        # 需求3：强制选择机制——必须至少勾选 1 项对比图层字段才能继续
+        src_selected = self._selected_src_fields()
+        cmp_selected = self._selected_cmp_fields()
+        if not cmp_selected:
+            QMessageBox.warning(
+                self, '未选择对比图层字段',
+                '尚未选择任何对比图层字段，导出结果将只包含源图层信息。\n\n'
+                '请至少勾选 1 项需要导出的对比图层字段后再继续分析。')
+            return
+        # 需求2：分析前字段选择确认环节
+        ret = QMessageBox.question(
+            self, '请确认导出字段',
+            '本次分析将导出以下字段，请确认后开始：\n\n'
+            '—— 源图层所选字段（%d 个）——\n%s\n\n'
+            '—— 对比图层所选字段（%d 个）——\n%s\n\n'
+            '是否开始分析？'
+            % (len(src_selected), '、'.join(src_selected),
+               len(cmp_selected), '、'.join(cmp_selected)),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes)
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+
+        # 分析类型过滤：仅保留用户勾选的类型（默认全选）
+        allowed_types = set()
+        if self.chk_same_site.isChecked():
+            allowed_types.add('同站')
+        if self.chk_overlap.isChecked():
+            allowed_types.add('同覆盖')
+        if self.chk_both.isChecked():
+            allowed_types.add('同站同覆盖')
+        if not allowed_types:
+            QMessageBox.warning(
+                self, '未选择分析类型',
+                '尚未勾选任何分析类型。请至少勾选"【同站】"、"【同覆盖】"或"【同站且同覆盖】"中的一项后再继续。')
             return
 
         pct_thr = self.spin_pct.value() / 100.0
@@ -391,10 +480,13 @@ class OverlapDialog(QDialog):
                     dtype = '同站'
                 else:
                     dtype = '同覆盖'
+                # 仅保留用户勾选的分析类型
+                if dtype not in allowed_types:
+                    continue
                 matches.append((d if d is not None else 0.0, ratio, dtype, cattrs))
             # 先按类型优先级、再按距离升序（同站同覆盖>同站>同覆盖，距离近的在前）
             order = {'同站同覆盖': 0, '同站': 1, '同覆盖': 2}
-            matches.sort(key=lambda m: (order[m[2]], m[0]) if m[0] else 0)
+            matches.sort(key=lambda m: (order[m[2]], m[0]))
             results.append((feat.attributes(), matches))
             n_rows += 1
 
@@ -402,17 +494,17 @@ class OverlapDialog(QDialog):
             QMessageBox.information(self, '分析完成', '未找到任何符合条件的图层要素。')
             return
 
-        # 列结构：第 1 组为主元素所选字段；每组重叠含"字段 + 重叠比例 + 起始点距离(米) + 类型"
+        # 列结构：源图层所选字段 + 每组重叠的对比字段(用户所选) + 距离/比例/类型
         max_over = max((len(m) for _, m in results), default=0)
-        nsel = len(selected_fields)
+        nsel = len(cmp_selected)
         # 按字段名查索引，确保取到的值不错位（源图层与对比图层分开求）
         src_idx_map = {f.name(): i for i, f in enumerate(src.fields())}
         cmp_idx_map = {f.name(): i for i, f in enumerate(cmp.fields())}
-        src_idxs = [src_idx_map.get(f, -1) for f in selected_fields]
-        cmp_idxs = [cmp_idx_map.get(f, -1) for f in selected_fields]
-        header = list(selected_fields)
+        src_idxs = [src_idx_map.get(f, -1) for f in src_selected]
+        cmp_idxs = [cmp_idx_map.get(f, -1) for f in cmp_selected]
+        header = list(src_selected)
         for k in range(1, max_over + 1):
-            for fname in selected_fields:
+            for fname in cmp_selected:
                 header.append('同覆盖%d.%s' % (k, fname))
             header.append('同覆盖%d距离(米)' % k)
             header.append('同覆盖%d重叠比例' % k)

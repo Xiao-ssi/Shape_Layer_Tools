@@ -260,8 +260,44 @@ class ExcelShapeLayerDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, '选择表格文件', '', FILE_FILTER)
         if not path:
             return
+        # 需求3：重新选择文件时，将所有已配置设置完全重置为初始状态
+        self._reset_settings()
         self.edit_file.setText(path)
         self.load_file(path)
+
+    def _reset_settings(self):
+        """将生成图层相关设置完全恢复为初始状态（重新选择文件时调用）。"""
+        self.global_fill = QColor('#00b050')
+        self.global_line = QColor(0, 0, 0, 0)  # 默认无线条边框（透明）
+        self.classify_config = {}
+        self._classify_field = None
+        self._rows_cache = None
+        self._distinct_cache = {}
+        self.created_layers = []
+        # 全局设置：形状/尺寸/顶角/颜色
+        self.cmb_shape.blockSignals(True)
+        self.cmb_shape.setCurrentIndex(0)
+        self.cmb_shape.blockSignals(False)
+        self.cmb_size.blockSignals(True)
+        self.cmb_size.setCurrentText('100')
+        self.cmb_size.blockSignals(False)
+        self.on_shape_changed()
+        self.btn_fill.setColor(self.global_fill)
+        self.btn_line.setColor(self.global_line)
+        # 分类：回到“不使用分类”，隐藏分类设置表
+        self.cmb_classify.blockSignals(True)
+        self.cmb_classify.setCurrentIndex(0)
+        self.cmb_classify.blockSignals(False)
+        self.btn_classify_cfg.setEnabled(False)
+        self.grp_single.show()
+        self.grp_cls.hide()
+        self.table_class.setRowCount(0)
+        # 图层与方向：坐标系、方位角恢复默认
+        self.cmb_crs.setCurrentIndex(0)
+        self.cmb_bearing.blockSignals(True)
+        self.cmb_bearing.setCurrentText('0')
+        self.cmb_bearing.blockSignals(False)
+        self.lbl_status.setText('请选择文件')
 
     def load_file(self, path):
         src, err = open_source(path)
@@ -586,22 +622,40 @@ class ExcelShapeLayerDialog(QDialog):
                                  '要素已生成(%d)但未能写入图层(featureCount=0)。请把 Python 控制台日志发我。' % len(feats))
             return
         self._apply_renderer(layer, cls_field, classify_cfg)
+        # 需求1：将图层保存到本地文件，保存路径与用户选择的源文件路径保持一致（同一目录）
+        src_file = self.edit_file.text()
+        save_dir = os.path.dirname(src_file) if src_file else None
+        if not save_dir:
+            QMessageBox.warning(self, '保存路径错误', '未找到源文件目录，无法保存图层。')
+            return
+        try:
+            out_path = self._save_layer_to_file(layer)
+        except Exception as exc:
+            QMessageBox.critical(self, '保存失败',
+                                 '图层已生成，但保存到本地文件时失败:\n%s\n\n请把此窗口内容和 Python 控制台日志发我排查。' % exc)
+            return
+        # 需求2：自动加载已保存到指定路径的文件图层，以支持后续合并保存操作
+        file_layer = QgsVectorLayer(out_path, layer.name(), 'ogr')
+        if not file_layer.isValid():
+            QMessageBox.critical(self, '加载失败', '无法加载已保存的图层文件:\n%s' % out_path)
+            return
+        self._apply_renderer(file_layer, cls_field, classify_cfg)
         # 参考 cyanlove：addMapLayer(layer, True) 并刷新画布，确保默认显示
-        QgsProject.instance().addMapLayer(layer, True)
-        self.created_layers.append((layer, layer.name()))
+        QgsProject.instance().addMapLayer(file_layer, True)
+        self.created_layers.append((file_layer, file_layer.name()))
         self._refresh_layer_combo()
 
         try:
             canvas = self.iface.mapCanvas()
-            if canvas and not layer.extent().isEmpty():
-                canvas.setExtent(layer.extent())
+            if canvas and not file_layer.extent().isEmpty():
+                canvas.setExtent(file_layer.extent())
             canvas.refresh()
-            self.iface.layerTreeView().refreshLayerSymbology(layer.id())
-            self.iface.layerTreeView().setCurrentLayer(layer)
+            self.iface.layerTreeView().refreshLayerSymbology(file_layer.id())
+            self.iface.layerTreeView().setCurrentLayer(file_layer)
         except Exception as e:
             QgsMessageLog.logMessage('生成后定位/刷新画布失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
 
-        msg = '已生成图层 "%s"，共 %d 个要素。' % (layer.name(), len(feats))
+        msg = '已生成图层 "%s"，共 %d 个要素，已保存到:\n%s' % (file_layer.name(), len(feats), out_path)
         if skipped:
             msg += ' 跳过无效记录 %d 行。' % skipped
         if self._last_swapped:
@@ -626,6 +680,30 @@ class ExcelShapeLayerDialog(QDialog):
         while ('%s-%d' % (base, i)) in existing:
             i += 1
         return '%s-%d' % (base, i)
+
+    def _save_layer_to_file(self, layer):
+        """将图层保存为 Shapefile（路径 = 源文件目录/图层名.shp），返回写入路径。"""
+        save_dir = os.path.dirname(self.edit_file.text())
+        if not save_dir:
+            raise RuntimeError('未找到源文件目录。')
+        if not os.path.isdir(save_dir):
+            os.makedirs(save_dir)
+        out_path = os.path.join(save_dir, layer.name()) + '.shp'
+        opts = QgsVectorFileWriter.SaveVectorOptions()
+        opts.driverName = 'ESRI Shapefile'
+        opts.fileEncoding = 'UTF-8'
+        opts.destinationCrs = layer.crs()
+        res = QgsVectorFileWriter.writeAsVectorFormatV3(
+            layer, out_path, QgsCoordinateTransformContext(), opts)
+        # 不同 QGIS 版本返回类型：元组 (err, msg, ...) 或直接错误码
+        if isinstance(res, tuple):
+            err, msg = res[0], (res[1] if len(res) > 1 else '')
+        else:
+            err, msg = res, ''
+        if err != QgsVectorFileWriter.WriterError.NoError:
+            hint = WRITER_ERROR_TEXT.get(err, '未知错误')
+            raise RuntimeError('错误码 %s（%s）%s' % (err, hint, ('\n%s' % msg) if msg else ''))
+        return out_path
 
     @staticmethod
     def _auto_fix_lon_lat(rows, xcol, ycol):
