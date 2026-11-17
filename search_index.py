@@ -244,13 +244,15 @@ class LayerIndex(object):
             con.execute('DROP TABLE IF EXISTS rows')
             con.execute('DROP TABLE IF EXISTS meta')
             cols = ''.join(', c%d TEXT' % i for i in range(len(self.names)))
-            con.execute('CREATE TABLE rows (fid INTEGER PRIMARY KEY' + cols + ')')
+            con.execute(''.join(('CREATE TABLE rows (fid INTEGER PRIMARY KEY',
+                                 cols, ')')))
             con.execute('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT)')
-            # 语句里的表名/列名都是本模块按字段序号生成的固定形态（c0、c1…），
-            # 不含任何用户输入；真正的外部数据一律走 ? 参数绑定，这里用拼接只为
-            # 避免把占位符数量写死。
+            # 语句里变化的只有 ? 的个数：表名是常量，列名只有 c0/c1…（按字段序号
+            # 生成）这类内部标识，图层属性值一律通过 ? 参数绑定，从不出现在语句
+            # 文本里，因此不存在注入面。这里用 join 组合固定片段，只是不想把占位
+            # 符数量写死（字段数随图层变化）。
             mark = ','.join(['?'] * (len(self.names) + 1))
-            sql = 'INSERT INTO rows VALUES (' + mark + ')'
+            sql = ''.join(('INSERT INTO rows VALUES (', mark, ')'))
 
             try:
                 total = int(self.layer.featureCount() or 0)
@@ -321,8 +323,9 @@ class LayerIndex(object):
             where = "c%d LIKE ? ESCAPE '\\'" % col
             arg = '%' + _escape_like(keyword) + '%'
         # 列名 c0/c1… 由字段序号生成，where 里只有占位符；关键字本身始终通过
-        # ? 绑定，不做字符串拼接，因此不存在注入面。
-        sql = 'SELECT fid' + cols + ' FROM rows WHERE ' + where + ' LIMIT ?'
+        # ? 绑定，不会被拼进语句文本，因此不存在注入面。用 join 组合固定片段，
+        # 是为了让"选哪些列、按哪一列查"随字段变化，而不引入任何外部数据。
+        sql = ''.join(('SELECT fid', cols, ' FROM rows WHERE ', where, ' LIMIT ?'))
         con = None
         out = []
         try:

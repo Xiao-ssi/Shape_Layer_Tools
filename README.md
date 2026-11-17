@@ -42,6 +42,20 @@ A QGIS plugin with layer tools for network optimization: generate sector shapes 
 
 - 顶部「网优图层工具」工具栏提供每个功能对应的图标按钮，点击即可运行。
 
+## 提交到 QGIS 仓库前的自检
+
+官方插件仓库会用 Bandit 做安全扫描，提交前建议本地先跑一遍（要求 0 告警）：
+
+```bash
+pip install bandit
+bandit -r . -x ./.workbuddy
+```
+
+只要报表是 `Total issues: High 0 / Medium 0 / Low 0` 就不会被打回。
+最容易命中的是 `B608`（把 SQL 用 `+`、`%`、`.format()`、f-string 拼出来）与 `B110`
+（`except Exception: pass`）：前者应改为一律 `?` 参数绑定，语句里只保留内部列名；
+后者应补日志后继续，而不是静默吞掉。
+
 ## 许可协议
 
 本插件以 **GNU GPL v3** 协议开源发布。
