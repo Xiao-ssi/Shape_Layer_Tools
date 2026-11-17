@@ -403,8 +403,11 @@ class ContainQueryDialog(QDialog):
         for ly in src_layers:
             try:
                 total += int(ly.featureCount() or 0)
-            except Exception:
-                pass
+            except Exception as exc:
+                # 个别数据源（WFS/部分驱动）不支持计数：只影响进度条的精度，记录后继续
+                QgsMessageLog.logMessage('读取图层 "%s" 要素数失败，进度条改用不确定模式: %s'
+                                         % (ly.name(), exc),
+                                         'Shape_Layer_Tools', Qgis.MessageLevel.Info)
         if total > 0:
             self.progress.setRange(0, total)
         else:
@@ -465,6 +468,7 @@ class ContainQueryDialog(QDialog):
 
         rows = []    # (点序号, 源几何, 区域图层名, 区域属性, 是否在图形内, 面积, 源属性)
         n_pt = 0
+        xf_failed = set()   # 坐标转换失败的区域图层名，只提示一次，避免逐要素刷屏
         for feat in src_layer.getFeatures():
             tick()
             g = feat.geometry()
@@ -477,7 +481,13 @@ class ContainQueryDialog(QDialog):
                 p_g = QgsGeometry(g)
                 try:
                     p_g.transform(xf)
-                except Exception:
+                except Exception as exc:
+                    if a.name not in xf_failed:
+                        xf_failed.add(a.name)
+                        QgsMessageLog.logMessage(
+                            '要素坐标转换到区域图层 "%s" 失败，该区域图层本次跳过: %s'
+                            % (a.name, exc),
+                            'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
                     continue
                 if p_g.isEmpty():
                     continue

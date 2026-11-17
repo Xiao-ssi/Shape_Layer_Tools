@@ -89,8 +89,10 @@ class ExcelShapeLayer(object):
                 self.iface.mainWindow().resizeDocks(
                     [self.search_dock], [SearchDock.MIN_WIDTH + 40],
                     Qt.Orientation.Horizontal)
-            except Exception:
-                pass
+            except Exception as e:
+                # 个别版本的 QgisInterface 不提供 resizeDocks：宽度退回默认值即可，不影响功能
+                QgsMessageLog.logMessage('设置搜索面板初始宽度失败: %s' % e,
+                                         'Shape_Layer_Tools', Qgis.MessageLevel.Info)
             self.search_dock.show()
         return self.search_dock
 

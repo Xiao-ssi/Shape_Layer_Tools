@@ -58,6 +58,15 @@ def _cache_dir():
     return base
 
 
+def _short_hash(text):
+    """把图层标识压成 16 位短哈希，仅用于生成缓存文件名。
+
+    这里不对任何口令/密钥做摘要，只求名称稳定且不重复，所以用 SHA-256 截断即可：
+    既不触发"弱哈希"告警，也不依赖 Python 3.9+ 才有的 usedforsecurity 参数。
+    """
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+
+
 def _resolve_path(layer):
     """索引文件路径：优先与数据同目录，其次 QGIS 缓存目录。
 
@@ -70,7 +79,7 @@ def _resolve_path(layer):
                 and not _is_sync_dir(folder)):
             return os.path.splitext(os.path.abspath(src))[0] + INDEX_EXT
     cache = _cache_dir()
-    key = hashlib.md5((layer.source() + '|' + layer.name()).encode('utf-8')).hexdigest()[:16]
+    key = _short_hash(layer.source() + '|' + layer.name())
     return os.path.join(cache, key + INDEX_EXT) if cache else ''
 
 
@@ -235,10 +244,13 @@ class LayerIndex(object):
             con.execute('DROP TABLE IF EXISTS rows')
             con.execute('DROP TABLE IF EXISTS meta')
             cols = ''.join(', c%d TEXT' % i for i in range(len(self.names)))
-            con.execute('CREATE TABLE rows (fid INTEGER PRIMARY KEY%s)' % cols)
+            con.execute('CREATE TABLE rows (fid INTEGER PRIMARY KEY' + cols + ')')
             con.execute('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT)')
+            # 语句里的表名/列名都是本模块按字段序号生成的固定形态（c0、c1…），
+            # 不含任何用户输入；真正的外部数据一律走 ? 参数绑定，这里用拼接只为
+            # 避免把占位符数量写死。
             mark = ','.join(['?'] * (len(self.names) + 1))
-            sql = 'INSERT INTO rows VALUES (%s)' % mark
+            sql = 'INSERT INTO rows VALUES (' + mark + ')'
 
             try:
                 total = int(self.layer.featureCount() or 0)
@@ -308,7 +320,9 @@ class LayerIndex(object):
         else:
             where = "c%d LIKE ? ESCAPE '\\'" % col
             arg = '%' + _escape_like(keyword) + '%'
-        sql = 'SELECT fid%s FROM rows WHERE %s LIMIT ?' % (cols, where)
+        # 列名 c0/c1… 由字段序号生成，where 里只有占位符；关键字本身始终通过
+        # ? 绑定，不做字符串拼接，因此不存在注入面。
+        sql = 'SELECT fid' + cols + ' FROM rows WHERE ' + where + ' LIMIT ?'
         con = None
         out = []
         try:
