@@ -201,34 +201,45 @@ class BufferDialog(QDialog):
                     else wg.buffer(dist * scale, 24)
                 if bg and not bg.isEmpty():
                     bg.transform(x_back)
+                    if bg.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
+                        bg = self._polygonal(bg)
                 return bg
             else:
                 wg = QgsGeometry(g)
                 bg = self._single_side_buffer(wg, dist, side == 'left') if is_line \
                     else wg.buffer(dist, 24)
+                if bg is not None and not bg.isEmpty() \
+                        and bg.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
+                    bg = self._polygonal(bg)
                 return bg
         except Exception:
             return None
 
     def _single_side_buffer(self, line_wg, dist, keep_left):
-        """生成线的一侧完整距离(dist)的矩形条带：内侧=原线，外侧=沿线各顶点
-        垂直偏移 dist，首尾按线段方向直线截断(无半圆、无对侧残留、无空白)。
-        返回几何或 None。"""
+        """生成线的一侧完整距离(dist)的条带：内侧贴着原线，外侧按法向偏移 dist，
+        首尾按线段方向直线截断(无半圆、无对侧残留)。返回几何或 None。"""
         b = self._build_side_band(line_wg, dist, keep_left)
         if b is not None and not b.isEmpty():
             return b
-        # 兜底：对称缓冲（避免空结果）
+        # 兜底：对称缓冲（宁可两侧都有，也不要空结果）
         try:
             buf = line_wg.buffer(dist, 8)
             if buf and not buf.isEmpty():
+                QgsMessageLog.logMessage('单边条带构建失败，已退回对称缓冲。',
+                                         'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
                 return buf
         except Exception as e:
             QgsMessageLog.logMessage('对称缓冲兜底失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Critical)
         return None
 
     def _build_side_band(self, line_wg, dist, side_left):
-        """构建线的一侧条带多边形：内侧=原线，外侧=各顶点沿垂直到该侧偏移 dist。
-        跟随线的走向，适用于曲线。返回几何或 None。"""
+        """构建线的一侧条带：逐段生成四边形，转角处补斜接（miter），最后整体求并集。
+
+        两个要点：
+        1) 逐段求并集而不是拼环后 makeValid：GEOS 的 makeValid 按奇偶规则修补自交环，
+           线条折返/重叠处会被"挖洞"，地图上出现空白；
+        2) 转角补的是斜接而不是弦：弦把外侧尖角切平，切点到两条边的垂直距离只有
+           d·cos(θ/2)（θ=120° 时正好一半），看起来就像膨胀距离缩水。"""
         try:
             plines = []
             if line_wg.isMultipart():
@@ -237,46 +248,188 @@ class BufferDialog(QDialog):
             else:
                 s = line_wg.asPolyline()
                 plines = [list(s)] if s else []
-            polys = []
+
+            side_sign = 1.0 if side_left else -1.0
+            pieces = []
             for pl in plines:
                 if len(pl) < 2:
                     continue
-                off = []
-                for i in range(len(pl)):
-                    if i == 0:
-                        a, b = pl[0], pl[1]
-                    elif i == len(pl) - 1:
-                        a, b = pl[-2], pl[-1]
-                    else:
-                        a, b = pl[i - 1], pl[i + 1]
-                    dx, dy = b.x() - a.x(), b.y() - a.y()
-                    L = math.hypot(dx, dy)
-                    if L < 1e-12:
-                        off.append(QgsPointXY(pl[i].x(), pl[i].y()))
+                # 1) 每一段一个四边形：内侧=线段本身，外侧=该段法向偏移
+                segs = []      # (b点, 单位方向, 起点外侧点, 终点外侧点)
+                for i in range(len(pl) - 1):
+                    a, b = pl[i], pl[i + 1]
+                    dxy = self._seg_dir(a, b, side_left)
+                    if dxy is None:
                         continue
-                    nx, ny = (-dy / L, dx / L) if side_left else (dy / L, -dx / L)
-                    off.append(QgsPointXY(pl[i].x() + nx * dist, pl[i].y() + ny * dist))
-                if len(off) < 2:
-                    continue
-                ring = [QgsPointXY(p.x(), p.y()) for p in pl]
-                ring.extend(off[::-1])
-                poly = QgsGeometry.fromPolygonXY([ring])
-                if poly is None or poly.isEmpty():
-                    continue
-                poly.makeValid()
-                polys.append(poly)
-            if not polys:
+                    nx, ny, ux, uy = dxy
+                    oa = QgsPointXY(a.x() + nx * dist, a.y() + ny * dist)
+                    ob = QgsPointXY(b.x() + nx * dist, b.y() + ny * dist)
+                    segs.append((b, (ux, uy), oa, ob))
+                    quad = [QgsPointXY(a.x(), a.y()), QgsPointXY(b.x(), b.y()), ob, oa]
+                    q = QgsGeometry.fromPolygonXY([quad])
+                    if q is not None and not q.isEmpty():
+                        pieces.append(q)
+                # 2) 外凸转角补斜接/圆弧；内凹转角已被两个四边形覆盖
+                for i in range(len(segs) - 1):
+                    v = segs[i][0]
+                    joint = self._corner_piece(
+                        v, segs[i][3], segs[i][1], segs[i + 1][2], segs[i + 1][1],
+                        dist, side_sign)
+                    if joint is not None:
+                        pieces.append(joint)
+
+            if not pieces:
                 return None
-            if len(polys) == 1:
-                return polys[0]
-            m = None
-            for p in polys:
-                m = p if m is None else m.combine(p)
-            if m is not None:
-                m.makeValid()
-            return m
-        except Exception:
+            return self._union_all(pieces)
+        except Exception as exc:
+            QgsMessageLog.logMessage('构建单边条带失败: %s' % exc,
+                                     'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
             return None
+
+    @staticmethod
+    def _corner_piece(v, o_prev, u_in, o_cur, u_out, dist, side_sign, miter_limit=4.0):
+        """外凸转角的面片：优先斜接(miter)，斜接长度超限时改用半径 dist 的圆弧。
+
+        o_prev/o_cur: 前一段终点、后一段起点的外侧偏移点；u_in/u_out: 单位方向。
+        内凹转角返回 None（相邻两个四边形已经覆盖）。"""
+        cross = u_in[0] * u_out[1] - u_in[1] * u_out[0]
+        # 内凹（转向朝着偏移侧）：无需补面
+        if cross * side_sign > 1e-12:
+            return None
+        vx, vy = v.x(), v.y()
+        if abs(cross) < 1e-12:
+            # 平行：同向无事；180° 原路折返补半圆，避免尖端只剩一条边
+            dot = u_in[0] * u_out[0] + u_in[1] * u_out[1]
+            if dot > 0:
+                return None
+            return BufferDialog._arc_piece(v, o_prev, o_cur, dist)
+        # 斜接点：两条偏移线的交点
+        dx, dy = o_cur.x() - o_prev.x(), o_cur.y() - o_prev.y()
+        t = (dx * u_out[1] - dy * u_out[0]) / cross
+        mx = o_prev.x() + u_in[0] * t
+        my = o_prev.y() + u_in[1] * t
+        if math.hypot(mx - vx, my - vy) <= dist * miter_limit:
+            ring = [QgsPointXY(vx, vy),
+                    QgsPointXY(o_prev.x(), o_prev.y()),
+                    QgsPointXY(mx, my),
+                    QgsPointXY(o_cur.x(), o_cur.y())]
+            g = QgsGeometry.fromPolygonXY([ring])
+            if g is not None and not g.isEmpty():
+                return g
+        return BufferDialog._arc_piece(v, o_prev, o_cur, dist)
+
+    @staticmethod
+    def _arc_piece(v, o_prev, o_cur, dist, step=math.pi / 16.0):
+        """以顶点为圆心、半径 dist 的扇形，用来补过锐转角（保证转角处仍是完整宽度）。"""
+        if dist <= 0:
+            return None
+        a0 = math.atan2(o_prev.y() - v.y(), o_prev.x() - v.x())
+        a1 = math.atan2(o_cur.y() - v.y(), o_cur.x() - v.x())
+        delta = a1 - a0
+        while delta > math.pi:
+            delta -= 2 * math.pi
+        while delta < -math.pi:
+            delta += 2 * math.pi
+        if abs(delta) < 1e-9:      # 两个偏移点重合，没有可补的面积
+            return None
+        steps = max(2, int(math.ceil(abs(delta) / step)))
+        ring = [QgsPointXY(v.x(), v.y())]
+        for k in range(steps + 1):
+            ang = a0 + delta * k / steps
+            ring.append(QgsPointXY(v.x() + math.cos(ang) * dist,
+                                   v.y() + math.sin(ang) * dist))
+        g = QgsGeometry.fromPolygonXY([ring])
+        return g if g is not None and not g.isEmpty() else None
+
+    @staticmethod
+    def _seg_dir(a, b, side_left):
+        """线段 a→b 的单位法向与单位方向 (nx, ny, ux, uy)；零长度返回 None。"""
+        dx, dy = b.x() - a.x(), b.y() - a.y()
+        length = math.hypot(dx, dy)
+        if length < 1e-12:
+            return None
+        ux, uy = dx / length, dy / length
+        if side_left:
+            return -uy, ux, ux, uy
+        return uy, -ux, ux, uy
+
+    def _union_all(self, pieces, chunk=2000):
+        """对多边形列表求并集，返回面几何（Polygon/MultiPolygon）或 None。"""
+        geoms = [g for g in pieces if g is not None and not g.isEmpty()]
+        if not geoms:
+            return None
+        # 分块归并，避免一次把上万个面丢给 GEOS
+        while len(geoms) > chunk:
+            nxt = []
+            for i in range(0, len(geoms), chunk):
+                merged = self._union_chunk(geoms[i:i + chunk])
+                if merged is not None and not merged.isEmpty():
+                    nxt.append(merged)
+            if not nxt:
+                return None
+            geoms = nxt
+        return self._union_chunk(geoms)
+
+    @staticmethod
+    def _union_chunk(geoms):
+        """单个块求并：优先 unaryUnion，取不到就逐块 combine。"""
+        if not geoms:
+            return None
+        if len(geoms) == 1:
+            return BufferDialog._polygonal(geoms[0])
+        merged = None
+        try:
+            merged = QgsGeometry.unaryUnion(geoms)
+        except Exception as exc:
+            QgsMessageLog.logMessage('unaryUnion 不可用，改用逐块合并: %s' % exc,
+                                     'Shape_Layer_Tools', Qgis.MessageLevel.Info)
+            merged = None
+        if merged is None or merged.isEmpty():
+            merged = None
+            for g in geoms:
+                if merged is None:
+                    merged = g
+                    continue
+                try:
+                    combined = merged.combine(g)
+                except Exception:
+                    combined = None
+                if combined is not None and not combined.isEmpty():
+                    merged = combined
+        return BufferDialog._polygonal(merged)
+
+    @staticmethod
+    def _polygonal(geom):
+        """从任意几何中抽取面部分，返回 Polygon/MultiPolygon；没有面则返回 None。"""
+        if geom is None or geom.isEmpty():
+            return None
+        poly_type = QgsWkbTypes.GeometryType.PolygonGeometry
+        if geom.type() == poly_type:
+            return geom
+        rings = []
+
+        def _walk(g):
+            if g is None or g.isEmpty():
+                return
+            if g.type() == poly_type:
+                if g.isMultipart():
+                    multi = g.asMultiPolygon()
+                    if multi:
+                        rings.extend(multi)
+                else:
+                    single = g.asPolygon()
+                    if single:
+                        rings.append(single)
+                return
+            # 只有多部件/集合才继续下钻，避免对线、点反复递归
+            if g.isMultipart():
+                for i in range(g.geometryCount()):
+                    _walk(g.getGeometry(i))
+
+        _walk(geom)
+        if not rings:
+            return None
+        return QgsGeometry.fromMultiPolygonXY(rings)
 
     def on_run(self):
         try:
@@ -309,11 +462,12 @@ class BufferDialog(QDialog):
             crs = QgsCoordinateReferenceSystem('EPSG:4326')
 
         # 新图层：几何为面，字段继承源字段，命名为 "源图层名-膨胀"
+        # 用 MultiPolygon：单边膨胀遇到线条折返/重叠时结果是多块，Polygon 类型会被截断
         fields = QgsFields()
         for f in src.fields():
             fields.append(QgsField(f.name(), QVariant.String))
         out_layer = QgsVectorLayer(
-            'Polygon?crs=%s' % (crs.authid() or 'EPSG:4326'),
+            'MultiPolygon?crs=%s' % (crs.authid() or 'EPSG:4326'),
             self._unique_name(src.name() + '-膨胀'), 'memory')
         provider = out_layer.dataProvider()
         provider.addAttributes(fields)
@@ -343,10 +497,13 @@ class BufferDialog(QDialog):
                 _skip('源要素空几何')
                 skipped += 1
                 continue
-            if not g.makeValid():
-                skipped += 1
+            # QGIS 3 的 makeValid() 返回新几何、不改自身，之前直接丢弃了修复结果
+            repaired = g.makeValid()
+            if repaired is None or repaired.isEmpty():
                 _skip('源几何修复失败')
+                skipped += 1
                 continue
+            g = repaired
             bg = self._buffer_geometry(g, crs, buff_dist, side)
             if bg is None:
                 _skip('缓冲生成失败(_buffer_geometry返回None)')

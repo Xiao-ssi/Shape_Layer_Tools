@@ -49,7 +49,7 @@ from . import shapes
 from .utils import (_to_float, _distinct_colors, SHAPE_LABELS, SHAPE_LIST_ORDER,
                     WRITER_ERROR_TEXT)
 from .sources import open_source
-from .ui_components import ColorButton, ClassifyConfigDialog
+from .ui_components import ColorButton, ClassifyConfigDialog, shape_icon
 from .search_dialog import SearchWidget
 
 EXPORT_FORMATS = [
@@ -151,7 +151,7 @@ class ExcelShapeLayerDialog(QDialog):
         form = QFormLayout(grp_single)
         self.cmb_shape = QComboBox()
         for k in SHAPE_LIST_ORDER:
-            self.cmb_shape.addItem(SHAPE_LABELS[k], k)
+            self.cmb_shape.addItem(shape_icon(k), SHAPE_LABELS[k], k)
         self.cmb_shape.currentIndexChanged.connect(self.on_shape_changed)
         form.addRow('形状类型:', self.cmb_shape)
         self.cmb_size = self._editable_combo([], '100')
@@ -162,6 +162,9 @@ class ExcelShapeLayerDialog(QDialog):
         self.lbl_width.hide(); self.edit_width.hide()
         self.btn_fill = ColorButton(self.global_fill)
         self.btn_line = ColorButton(self.global_line)
+        # 颜色按钮变化时同步到全局颜色，确保实际生成的颜色与按钮显示一致
+        self.btn_fill.colorChanged.connect(lambda: setattr(self, 'global_fill', QColor(self.btn_fill.color)))
+        self.btn_line.colorChanged.connect(lambda: setattr(self, 'global_line', QColor(self.btn_line.color)))
         hc = QHBoxLayout()
         hc.addWidget(QLabel('填充:')); hc.addWidget(self.btn_fill)
         hc.addSpacing(12); hc.addWidget(QLabel('边框:')); hc.addWidget(self.btn_line)
@@ -458,7 +461,7 @@ class ExcelShapeLayerDialog(QDialog):
             self.table_class.setItem(i, 0, QTableWidgetItem(str(v)))
             cmb = QComboBox()
             for k in SHAPE_LIST_ORDER:
-                cmb.addItem(SHAPE_LABELS[k], k)
+                cmb.addItem(shape_icon(k), SHAPE_LABELS[k], k)
             cmb.setCurrentIndex(cmb.findData(cfg.get('shape', self._default_class_shape())))
             self.table_class.setCellWidget(i, 1, cmb)
             size = cfg.get('size')

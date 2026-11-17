@@ -2,7 +2,7 @@
 name=网优图层工具 (Shape Layer Tools)
 qgisMinimumVersion=3.16
 description=Layer tools for network optimization: create sector shapes from Excel, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx. More features in development.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络同覆盖评估、3CC组合评估）。
-version=1.1.1
+version=1.2.1
 author=肖司
 email=xiaossi@139.com
 about=Generate vector layers of various shapes (circle, sector, sword, etc.) from an Excel table containing longitude, latitude, azimuth and size fields, without any fixed template. Export layers to SHP, TAB, KML and KMZ. Run containment queries to find which small layers are located inside a boundary layer, based on start-point coordinates or area percentage. Buffer (expand) or shrink point, line and polygon layers by a given distance, including single-sided expansion for line layers.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络同覆盖评估、3CC组合评估）。
@@ -14,4 +14,8 @@ category=Vector
 icon=icons/icon.svg
 experimental=False
 deprecated=False
-changelog=1.1.1 修复同覆盖判断条件，可指定分析类型，并修复部分小Bug。
+changelog=1.2.1 版本更新：1、「搜索数据」功能停靠在QGIS主窗口左侧的面板，可用 Ctrl+F 随时唤起。  
+2、修复单边膨胀转角处宽度不足的问题、折返/重叠处出现空白的问题。 
+3、图层包含查询支持多选需查询图层与多选区域图层；
+4、加快搜索数据响应速度，新增本地 SQLite 索引加速，百万行数据查询由十几秒降至毫秒级；索引可建立/删除/自动判定过期。
+5、新增创建图层时可选择的图形类型。

@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
-"""图层包含查询：判断点图层中的点是否落在所选面图层内，生成结果图层并导出表格。
-本模块独立，可单独修改而不影响其他功能模块。"""
+"""图层包含查询：判断"需查询图层"中的要素是否落在所选"区域图层"内。
+
+支持同时勾选多个需查询图层与多个区域图层：
+- 需查询图层逐个处理，每个源图层生成一个独立结果图层（几何类型/坐标系跟随源图层）；
+- 区域图层可多选，命中结果会记录来自哪个区域图层；单选时输出结构与旧版完全一致；
+- 区域图形一次性读入内存并建立空间索引，避免逐点向数据源查询。
+
+本模块独立，可单独修改而不影响其他功能模块。
+"""
 import os
 import csv
 
@@ -13,14 +20,14 @@ from qgis.core import (
     QgsGeometry,
     QgsWkbTypes,
     QgsCoordinateTransform,
-    QgsFeatureRequest,
     QgsDistanceArea,
     QgsRectangle,
     QgsPointXY,
     QgsFields,
+    QgsSpatialIndex,
     QgsMessageLog,
 )
-from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtCore import Qt, QVariant
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -28,7 +35,6 @@ from qgis.PyQt.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QLabel,
-    QComboBox,
     QPushButton,
     QCheckBox,
     QSpinBox,
@@ -38,6 +44,8 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QProgressBar,
+    QListWidget,
+    QListWidgetItem,
     QApplication,
 )
 from .utils import session_get, session_set
@@ -60,14 +68,64 @@ def _first_point(qg):
     return None
 
 
+class _AreaLayer(object):
+    """区域图层内存快照：几何 + 属性 + 空间索引，供大量要素快速判定。"""
+
+    def __init__(self, layer):
+        self.layer = layer
+        self.name = layer.name()
+        self.crs = layer.crs()
+        self.geographic = bool(self.crs.isGeographic())
+        self.field_names = [f.name() for f in layer.fields()]
+        self.geoms = {}      # fid -> QgsGeometry
+        self.attrs = {}      # fid -> [属性值...]
+        self.index = QgsSpatialIndex()
+        for feat in layer.getFeatures():
+            g = feat.geometry()
+            if g is None or g.isEmpty():
+                continue
+            fid = feat.id()
+            self.geoms[fid] = g
+            self.attrs[fid] = list(feat.attributes())
+            self.index.addFeature(feat)
+        self.da = QgsDistanceArea()
+        try:
+            self.da.setSourceCrs(self.crs, QgsProject.instance().transformContext())
+            self.da.setEllipsoid(QgsProject.instance().ellipsoid())
+        except Exception as e:
+            QgsMessageLog.logMessage('面积计算器初始化失败: %s' % e,
+                                     'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+
+    def candidates(self, rect):
+        try:
+            return self.index.intersects(rect)
+        except Exception as e:
+            QgsMessageLog.logMessage('空间索引查询失败，退回全量比对: %s' % e,
+                                     'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+            return list(self.geoms.keys())
+
+    def area(self, geom):
+        try:
+            return self.da.measureArea(geom)
+        except Exception:
+            return None
+
+    def to_meters(self, dist):
+        """把几何距离换算成米（经纬度图层按 1 度≈111319.9 米粗略换算）。"""
+        return dist * 111319.9 if self.geographic else dist
+
+    def buffer_deg(self, meters):
+        return meters / 111319.9 if self.geographic else meters
+
+
 class ContainQueryDialog(QDialog):
-    """图层包含查询：判断点图层中的点是否落在所选面图层内，生成结果图层并导出表格。"""
+    """图层包含查询：支持多选需查询图层与多选区域图层。"""
 
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
         self.setWindowTitle('图层包含查询')
-        self.resize(560, 420)
+        self.resize(620, 760)
         self._build_ui()
         self._restore_session()
         self.refresh_layers()
@@ -75,16 +133,24 @@ class ContainQueryDialog(QDialog):
     def _build_ui(self):
         lay = QVBoxLayout(self)
 
-        grp = QGroupBox('图层选择')
-        form = QFormLayout(grp)
-        self.cmb_pt = QComboBox(); self.cmb_pt.setObjectName('cmb_pt')
-        self.cmb_pt.currentIndexChanged.connect(self._on_layer_changed)
-        form.addRow('需查询图层:', self.cmb_pt)
-        self.cmb_poly = QComboBox(); self.cmb_poly.setObjectName('cmb_poly')
-        self.cmb_poly.currentIndexChanged.connect(self._on_layer_changed)
-        form.addRow('区域图层（范围内）:', self.cmb_poly)
+        grp = QGroupBox('图层选择（可多选）')
+        gv = QVBoxLayout(grp)
+        gv.addWidget(QLabel('需查询图层（可勾选多个，每个图层生成一份结果）:'))
+        self.lw_src = QListWidget()
+        self.lw_src.setObjectName('lw_src')
+        self.lw_src.setMinimumHeight(110)
+        self.lw_src.itemChanged.connect(self._on_layer_changed)
+        gv.addWidget(self.lw_src)
+        gv.addLayout(self._check_all_row(self.lw_src))
+        gv.addWidget(QLabel('区域图层（可勾选多个，仅面图层，判断是否落在其中）:'))
+        self.lw_area = QListWidget()
+        self.lw_area.setObjectName('lw_area')
+        self.lw_area.setMinimumHeight(90)
+        self.lw_area.itemChanged.connect(self._on_layer_changed)
+        gv.addWidget(self.lw_area)
+        gv.addLayout(self._check_all_row(self.lw_area))
         btn_refresh = QPushButton('刷新图层列表'); btn_refresh.clicked.connect(self.refresh_layers)
-        form.addRow('', btn_refresh)
+        gv.addWidget(btn_refresh)
         lay.addWidget(grp)
 
         opt = QGroupBox('匹配选项')
@@ -112,15 +178,24 @@ class ContainQueryDialog(QDialog):
 
         out = QGroupBox('结果导出（表格）')
         fout = QFormLayout(out)
+        self.chk_area_attrs = QCheckBox('结果表格包含区域图层属性列')
+        self.chk_area_attrs.setChecked(True)
+        self.chk_area_attrs.setToolTip('勾选多个区域图层时，每个图层的字段都会作为一列输出；'
+                                       '字段较多时可取消勾选，只保留"是否在图形内"与匹配区域图层名。')
+        fout.addRow('附加列:', self.chk_area_attrs)
         self.edit_out = QLineEdit(); self.edit_out.setReadOnly(True)
-        self.edit_out.setPlaceholderText('默认保存到面图层所在目录')
+        self.edit_out.setPlaceholderText('默认保存到区域图层所在目录')
         btn_out = QPushButton('另存为...'); btn_out.clicked.connect(self.on_browse_out)
         r3 = QHBoxLayout(); r3.addWidget(self.edit_out); r3.addWidget(btn_out)
         fout.addRow('保存路径:', r3)
+        tip = QLabel('勾选多个需查询图层时，会自动在文件名后追加源图层名以便区分。')
+        tip.setStyleSheet('color:#888;'); tip.setWordWrap(True)
+        fout.addRow('', tip)
         lay.addWidget(out)
 
-        self.lbl_status = QLabel('请选择点图层和面图层')
+        self.lbl_status = QLabel('请勾选需查询图层和区域图层')
         self.lbl_status.setStyleSheet('color:#666;')
+        self.lbl_status.setWordWrap(True)
         lay.addWidget(self.lbl_status)
 
         # 查询进度条
@@ -136,30 +211,91 @@ class ContainQueryDialog(QDialog):
         hb.addStretch(); hb.addWidget(self.btn_run); hb.addWidget(btn_close)
         lay.addLayout(hb)
 
+    def _check_all_row(self, lw):
+        row = QHBoxLayout()
+        b_all = QPushButton('全选')
+        b_none = QPushButton('清空')
+        b_all.clicked.connect(lambda: self._set_all_checked(lw, True))
+        b_none.clicked.connect(lambda: self._set_all_checked(lw, False))
+        row.addWidget(b_all); row.addWidget(b_none); row.addStretch()
+        return row
+
+    @staticmethod
+    def _set_all_checked(lw, checked):
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        lw.blockSignals(True)
+        for i in range(lw.count()):
+            lw.item(i).setCheckState(state)
+        lw.blockSignals(False)
+
+    @staticmethod
+    def _checked_ids(lw):
+        out = []
+        for i in range(lw.count()):
+            it = lw.item(i)
+            if it.checkState() == Qt.CheckState.Checked:
+                out.append(it.data(Qt.ItemDataRole.UserRole))
+        return out
+
+    @staticmethod
+    def _checked_layers(lw):
+        out = []
+        for lid in ContainQueryDialog._checked_ids(lw):
+            ly = QgsProject.instance().mapLayer(lid) if lid else None
+            if isinstance(ly, QgsVectorLayer):
+                out.append(ly)
+        return out
+
+    @staticmethod
+    def _fill_list(lw, items, checked_ids):
+        lw.blockSignals(True)
+        lw.clear()
+        for name, lid in items:
+            it = QListWidgetItem(name)
+            it.setData(Qt.ItemDataRole.UserRole, lid)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Checked if lid in checked_ids
+                             else Qt.CheckState.Unchecked)
+            lw.addItem(it)
+        lw.blockSignals(False)
+
+    @staticmethod
+    def _split_ids(text):
+        return [x for x in str(text or '').split(',') if x]
+
     def refresh_layers(self):
-        src_layers, poly_layers = [], []
+        cur_src = set(self._checked_ids(self.lw_src))
+        cur_area = set(self._checked_ids(self.lw_area))
+        if not cur_src:
+            cur_src = set(self._split_ids(session_get('contain', 'src_ids', '')))
+        if not cur_area:
+            cur_area = set(self._split_ids(session_get('contain', 'area_ids', '')))
+
+        src, poly = [], []
         for lid, ly in QgsProject.instance().mapLayers().items():
             if not isinstance(ly, QgsVectorLayer):
                 continue
             # 需查询图层可以是任意矢量图层（点/线/面，甚至无几何）
-            src_layers.append((ly.name(), lid))
+            src.append((ly.name(), lid))
             if ly.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry:
-                poly_layers.append((ly.name(), lid))
-        if not poly_layers:
-            poly_layers = [('（无面图层面）', '')]
-        for cmb, layers in ((self.cmb_pt, src_layers), (self.cmb_poly, poly_layers)):
-            cmb.blockSignals(True)
-            cmb.clear()
-            for name, lid in layers:
-                cmb.addItem(name, lid)
-            # 恢复上次选择的图层
-            prev = session_get('contain', cmb.objectName())
-            if prev:
-                idx = cmb.findData(prev)
-                if idx >= 0:
-                    cmb.setCurrentIndex(idx)
-            cmb.blockSignals(False)
+                poly.append((ly.name(), lid))
+
+        self._fill_list(self.lw_src, src, cur_src)
+        self._fill_list(self.lw_area, poly, cur_area)
+
+        # 首次使用（无任何记忆）时默认勾选第一个图层，避免空列表无从下手
+        if src and not self._checked_ids(self.lw_src):
+            self._set_first_checked(self.lw_src)
+        if poly and not self._checked_ids(self.lw_area):
+            self._set_first_checked(self.lw_area)
         self._on_layer_changed()
+
+    @staticmethod
+    def _set_first_checked(lw):
+        lw.blockSignals(True)
+        if lw.count():
+            lw.item(0).setCheckState(Qt.CheckState.Checked)
+        lw.blockSignals(False)
 
     def _restore_session(self):
         self.chk_nearest.setChecked(bool(session_get('contain', 'nearest', self.chk_nearest.isChecked())))
@@ -170,6 +306,8 @@ class ContainQueryDialog(QDialog):
         multi = bool(session_get('contain', 'multi', self.rb_multi.isChecked()))
         self.rb_multi.setChecked(multi); self.rb_single.setChecked(not multi)
         self.chk_pct.setChecked(bool(session_get('contain', 'pct_on', self.chk_pct.isChecked())))
+        self.chk_area_attrs.setChecked(
+            bool(session_get('contain', 'area_attrs', self.chk_area_attrs.isChecked())))
         try:
             self.spin_pct.setValue(int(session_get('contain', 'pct', self.spin_pct.value())))
         except (TypeError, ValueError, AttributeError) as e:
@@ -179,13 +317,14 @@ class ContainQueryDialog(QDialog):
             self.edit_out.setText(outp)
 
     def _save_session(self):
-        session_set('contain', 'cmb_pt', self.cmb_pt.currentData())
-        session_set('contain', 'cmb_poly', self.cmb_poly.currentData())
+        session_set('contain', 'src_ids', ','.join(self._checked_ids(self.lw_src)))
+        session_set('contain', 'area_ids', ','.join(self._checked_ids(self.lw_area)))
         session_set('contain', 'nearest', self.chk_nearest.isChecked())
         session_set('contain', 'dist', self.spin_dist.value())
         session_set('contain', 'multi', self.rb_multi.isChecked())
         session_set('contain', 'pct_on', self.chk_pct.isChecked())
         session_set('contain', 'pct', self.spin_pct.value())
+        session_set('contain', 'area_attrs', self.chk_area_attrs.isChecked())
         session_set('contain', 'out_path', self.edit_out.text())
 
     def _on_layer_changed(self):
@@ -193,22 +332,18 @@ class ContainQueryDialog(QDialog):
             self._default_out_path()
 
     def _default_out_path(self):
-        poly = self._current_layer(self.cmb_poly)
         base = None
-        if poly is not None:
-            base = os.path.splitext(poly.source())[0] if os.path.exists(poly.source()) else None
-        if not base and self._current_layer(self.cmb_pt) is not None:
-            pt = self._current_layer(self.cmb_pt)
-            base = os.path.splitext(pt.source())[0] if os.path.exists(pt.source()) else None
+        for lw in (self.lw_area, self.lw_src):
+            layers = self._checked_layers(lw)
+            if layers:
+                src = layers[0].source().split('|')[0]
+                if os.path.exists(src):
+                    base = os.path.splitext(src)[0]
+                    break
         if not base:
             base = os.path.expanduser('~/contain_query_result')
         self.edit_out.setText(base + '_查询结果.csv')
         self._out_path = None
-
-    @staticmethod
-    def _current_layer(cmb):
-        lid = cmb.currentData()
-        return QgsProject.instance().mapLayer(lid) if lid else None
 
     def on_browse_out(self):
         default = self.edit_out.text() or os.path.expanduser('~/contain_query_result.csv')
@@ -232,183 +367,259 @@ class ContainQueryDialog(QDialog):
             QApplication.processEvents()
             self.btn_run.setEnabled(True)
 
+    # ============================ 查询 ============================
     def _do_query(self):
-        pt_layer = self._current_layer(self.cmb_pt)
-        poly_layer = self._current_layer(self.cmb_poly)
-        if pt_layer is None or poly_layer is None:
-            QMessageBox.warning(self, '提示', '请选择点图层和面图层。')
+        src_layers = self._checked_layers(self.lw_src)
+        area_layers = self._checked_layers(self.lw_area)
+        if not src_layers:
+            QMessageBox.warning(self, '提示', '请至少勾选一个"需查询图层"。')
+            return
+        if not area_layers:
+            QMessageBox.warning(self, '提示', '请至少勾选一个"区域图层"（面图层）。')
             return
 
-        # 点几何统一转换到面图层坐标系
-        xform = QgsCoordinateTransform(
-            pt_layer.crs(), poly_layer.crs(),
-            QgsProject.instance().transformContext())
-        # 面要素(几何/属性)一次性读入内存
-        poly_fields = [f.name() for f in poly_layer.fields()]
-        polys = []
-        for ft in poly_layer.getFeatures():
-            g = ft.geometry()
-            if g is not None and not g.isEmpty():
-                polys.append((g, ft.attributes()))
+        self.lbl_status.setText('正在读取 %d 个区域图层的图形...' % len(area_layers))
+        QApplication.processEvents()
+        areas = []
+        for ly in area_layers:
+            try:
+                a = _AreaLayer(ly)
+            except Exception as exc:
+                QMessageBox.warning(self, '区域图层读取失败', '%s\n%s' % (ly.name(), exc))
+                continue
+            if not a.geoms:
+                QgsMessageLog.logMessage('区域图层无有效面要素，已跳过: %s' % ly.name(),
+                                         'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+                continue
+            areas.append(a)
+        if not areas:
+            QMessageBox.warning(self, '提示', '所选区域图层中没有有效的面要素。')
+            return
+        self.lbl_status.setText('区域图形已加载：%s' % '、'.join(
+            '%s(%d个)' % (a.name, len(a.geoms)) for a in areas))
+        QApplication.processEvents()
 
-        # 面积计算（米²）
-        da = QgsDistanceArea()
-        da.setSourceCrs(poly_layer.crs(), QgsProject.instance().transformContext())
-        da.setEllipsoid(QgsProject.instance().ellipsoid())
-
-        src_fields = [f for f in pt_layer.fields()]
-        used = list(pt_layer.fields().names())
-        # 输出字段：源字段 + 是否在图形内 + 面积 + 面图层字段（重名则加前缀）
-        extra = []
-        for name in poly_fields:
-            fname = name if name not in used else '%s_%s' % (poly_layer.name(), name)
-            extra.append(fname)
-            used.append(fname)
-
-        match_nearest = self.chk_nearest.isChecked()
-        max_dist = self.spin_dist.value()
-        one_to_one = self.rb_single.isChecked()
-
-        # 记录原始点顺序，用于1对1去重
-        result_rows = []  # (idx, feature, poly_attrs | None, within, area, attrs_vals)
-        n_pt = 0
-        # 初始化查询进度条
-        total = pt_layer.featureCount()
-        done = 0
-        if total and total > 0:
+        total = 0
+        for ly in src_layers:
+            try:
+                total += int(ly.featureCount() or 0)
+            except Exception:
+                pass
+        if total > 0:
             self.progress.setRange(0, total)
         else:
-            self.progress.setRange(0, 0)  # 不确定模式
+            self.progress.setRange(0, 0)
         self.progress.setValue(0)
-        for feat in pt_layer.getFeatures():
-            done += 1
-            if total and total > 0:
-                self.progress.setValue(done)
-            else:
-                self.progress.setValue(0)
+
+        done = [0]
+        add_area_col = len(areas) > 1
+        results = []     # [(src_layer, rows, extra_cols, area_col, out_layer)]
+
+        def _tick():
+            done[0] += 1
+            if total > 0:
+                self.progress.setValue(done[0])
+            if done[0] % 200 == 0:
+                QApplication.processEvents()
+
+        for i, src_layer in enumerate(src_layers):
+            self.lbl_status.setText('正在查询：%s（%d/%d）' % (src_layer.name(), i + 1, len(src_layers)))
             QApplication.processEvents()
-            g = feat.geometry()
-            if g is None or g.isEmpty():
+            rows = self._query_one(src_layer, areas, _tick)
+            if not rows:
+                QgsMessageLog.logMessage('源图层没有可查询的要素: %s' % src_layer.name(),
+                                         'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
                 continue
-            pt_g = QgsGeometry(g)  # 拷贝后原地转换，避免 QgsGeometry 重载缺失问题
-            pt_g.transform(xform)
-            # 以要素的"起始点经纬度"判断是否落在区域内：只要该经纬度点在区域内即算匹配；
-            # 同时支持"图形面积占比"匹配（默认图形有 50% 面积在区域内即算匹配）。
-            start = _first_point(pt_g)
-            if start is None:
-                cen = pt_g.centroid()
-                start = QgsPointXY(cen.x(), cen.y()) if cen is not None else None
-            if start is None:
-                continue
-            start_g = QgsGeometry.fromPointXY(start)
-            bbox = pt_g.boundingBox()
-            cands = []
-            for pf in poly_layer.getFeatures(QgsFeatureRequest().setFilterRect(bbox)):
-                pg = pf.geometry()
-                if pg is None or pg.isEmpty():
-                    continue
-                cands.append((pg, pf.attributes()))
-            use_pct = self.chk_pct.isChecked()
-            pct_thr = self.spin_pct.value() / 100.0
-            total_area = pt_g.area()
-            has_area = total_area > 1e-12
-            matches = []
-            for pg, pa in cands:
-                if pg.contains(start_g):
-                    matches.append((pg, pa))
-                    continue
-                if use_pct and has_area:
-                    inter = pg.intersection(pt_g)
-                    if not inter.isEmpty() and (inter.area() / total_area) >= pct_thr:
-                        matches.append((pg, pa))
+            extra_cols = self._extra_columns(src_layer, areas) \
+                if self.chk_area_attrs.isChecked() else []
+            out_layer, feats_all, feats_layer, fields = self._build_output(
+                src_layer, rows, extra_cols, add_area_col)
+            results.append((src_layer, extra_cols, add_area_col, out_layer,
+                            feats_all, feats_layer, fields))
 
-            if matches:
-                for pg, pa in matches:
-                    result_rows.append((n_pt, pt_g, pa, '是', da.measureArea(pg),
-                                       list(feat.attributes())))
-            elif match_nearest:
-                closest = None; cdist = None
-                buf = max_dist / 111319.9
-                exp = QgsRectangle(bbox.xMinimum() - buf, bbox.yMinimum() - buf,
-                                   bbox.xMaximum() + buf, bbox.yMaximum() + buf)
-                for pf in poly_layer.getFeatures(QgsFeatureRequest().setFilterRect(exp)):
-                    pg = pf.geometry()
-                    if pg is None or pg.isEmpty():
-                        continue
-                    try:
-                        d = pg.distance(start_g) * 111319.9
-                    except Exception as e:
-                        QgsMessageLog.logMessage('计算距离失败, 跳过该候选面: %s' % e,
-                                                  'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
-                        continue
-                    if closest is None or d < cdist:
-                        closest, cdist = pg, d
-                if closest is not None and cdist <= max_dist:
-                    pa = polys[[p[0] for p in polys].index(closest)] if closest in [p[0] for p in polys] else None
-                    result_rows.append((n_pt, pt_g, pa, '否', da.measureArea(closest),
-                                        list(feat.attributes())))
-                else:
-                    result_rows.append((n_pt, pt_g, None, '否', None, list(feat.attributes())))
-            else:
-                result_rows.append((n_pt, pt_g, None, '否', None, list(feat.attributes())))
-            n_pt += 1
-
-        # 1对1：按原始点取面积最小（含面积优先按填‘是’的）的那条
-        if one_to_one:
-            grouped = {}
-            for row in result_rows:
-                idx = row[0]
-                cur = grouped.get(idx)
-                if cur is None or row[4] is not None and (cur[4] is None or row[4] < cur[4]):
-                    grouped[idx] = row
-            result_rows = [grouped[k] for k in sorted(grouped)]
-
-        if not result_rows:
+        if not results:
             QMessageBox.information(self, '查询完成', '未找到任何符合条件的要素。')
             return
 
-        # 构建结果内存图层：几何类型跟随"需查询图层"
+        self._export_and_report(results)
+
+    def _query_one(self, src_layer, areas, tick):
+        """对单个源图层执行包含查询，返回结果行列表。"""
+        ctx = QgsProject.instance().transformContext()
+        pairs = []
+        for a in areas:
+            try:
+                pairs.append((a, QgsCoordinateTransform(src_layer.crs(), a.crs, ctx)))
+            except Exception as exc:
+                QgsMessageLog.logMessage('坐标系转换创建失败(%s): %s' % (a.name, exc),
+                                         'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+        if not pairs:
+            QMessageBox.warning(self, '提示', '源图层与区域图层之间无法建立坐标转换。')
+            return []
+
+        match_nearest = self.chk_nearest.isChecked()
+        max_dist = float(self.spin_dist.value())
+        one_to_one = self.rb_single.isChecked()
+        use_pct = self.chk_pct.isChecked()
+        pct_thr = self.spin_pct.value() / 100.0
+
+        rows = []    # (点序号, 源几何, 区域图层名, 区域属性, 是否在图形内, 面积, 源属性)
+        n_pt = 0
+        for feat in src_layer.getFeatures():
+            tick()
+            g = feat.geometry()
+            if g is None or g.isEmpty():
+                continue
+            src_attrs = list(feat.attributes())
+            matched = False
+            nearest = None      # (区域图层名, 区域属性, 面积, 距离米)
+            for a, xf in pairs:
+                p_g = QgsGeometry(g)
+                try:
+                    p_g.transform(xf)
+                except Exception:
+                    continue
+                if p_g.isEmpty():
+                    continue
+                # 以要素的"起始点经纬度"判断是否落在区域内；
+                # 同时支持"图形面积占比"匹配（默认图形有 50% 面积在区域内即算匹配）。
+                start = _first_point(p_g)
+                if start is None:
+                    cen = p_g.centroid()
+                    if cen is None or cen.isEmpty():
+                        continue
+                    cpt = cen.asPoint()
+                    start = QgsPointXY(cpt.x(), cpt.y())
+                start_g = QgsGeometry.fromPointXY(start)
+                bbox = p_g.boundingBox()
+                total_area = p_g.area()
+                has_geom_area = total_area > 1e-12
+                hit = False
+                for fid in sorted(a.candidates(bbox)):
+                    pg = a.geoms.get(fid)
+                    if pg is None:
+                        continue
+                    is_hit = False
+                    if pg.contains(start_g):
+                        is_hit = True
+                    elif use_pct and has_geom_area:
+                        try:
+                            inter = pg.intersection(p_g)
+                        except Exception:
+                            inter = None
+                        if (inter is not None and not inter.isEmpty()
+                                and (inter.area() / total_area) >= pct_thr):
+                            is_hit = True
+                    if is_hit:
+                        hit = True
+                        rows.append((n_pt, g, a.name, a.attrs.get(fid), '是',
+                                     a.area(pg), src_attrs))
+                if hit:
+                    matched = True
+                elif match_nearest:
+                    buf = a.buffer_deg(max_dist)
+                    exp = QgsRectangle(bbox.xMinimum() - buf, bbox.yMinimum() - buf,
+                                       bbox.xMaximum() + buf, bbox.yMaximum() + buf)
+                    for fid in a.candidates(exp):
+                        pg = a.geoms.get(fid)
+                        if pg is None:
+                            continue
+                        try:
+                            d = a.to_meters(pg.distance(start_g))
+                        except Exception as exc:
+                            QgsMessageLog.logMessage('计算距离失败, 跳过该候选面: %s' % exc,
+                                                     'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+                            continue
+                        if d <= max_dist and (nearest is None or d < nearest[3]):
+                            nearest = (a.name, a.attrs.get(fid), a.area(pg), d)
+
+            if not matched:
+                if nearest is not None:
+                    rows.append((n_pt, g, nearest[0], nearest[1], '否', nearest[2], src_attrs))
+                else:
+                    rows.append((n_pt, g, '', None, '否', None, src_attrs))
+            n_pt += 1
+
+        # 1对1：按原始点取"优先在范围内、其次面积最小"的那条
+        if one_to_one:
+            def _key(r):
+                within_rank = 0 if r[4] == '是' else 1
+                area = r[5] if r[5] is not None else float('inf')
+                return (within_rank, area)
+            grouped = {}
+            for row in rows:
+                cur = grouped.get(row[0])
+                if cur is None or _key(row) < _key(cur):
+                    grouped[row[0]] = row
+            rows = [grouped[k] for k in sorted(grouped)]
+        return rows
+
+    @staticmethod
+    def _extra_columns(src_layer, areas):
+        """结果表格中"区域图层属性"列：多图层字段重名时自动加图层名前缀。"""
+        used = set(src_layer.fields().names())
+        extra = []      # (输出列名, 区域图层名, 区域字段序号)
+        for a in areas:
+            for i, fname in enumerate(a.field_names):
+                out = fname
+                if out in used:
+                    out = '%s_%s' % (a.name, fname)
+                    k = 2
+                    while out in used:
+                        out = '%s_%s_%d' % (a.name, fname, k)
+                        k += 1
+                used.add(out)
+                extra.append((out, a.name, i))
+        return extra
+
+    def _build_output(self, src_layer, rows, extra_cols, add_area_col):
+        """按源图层几何类型/坐标系生成结果内存图层；返回图层与要素集合。"""
+        src_fields = list(src_layer.fields())
         fields = QgsFields()
         for f in src_fields:
             fields.append(QgsField(f.name(), QVariant.String))
         fields.append(QgsField('是否在图形内', QVariant.String))
         fields.append(QgsField('面图层面积(平方米)', QVariant.String))
-        for fname in extra:
-            fields.append(QgsField(fname, QVariant.String))
+        if add_area_col:
+            fields.append(QgsField('匹配区域图层', QVariant.String))
+        for out_name, _a, _i in extra_cols:
+            fields.append(QgsField(out_name, QVariant.String))
 
-        crs_authid = poly_layer.crs().authid() or 'EPSG:4326'
-        src_has_geom = pt_layer.wkbType() != QgsWkbTypes.Type.NoGeometry
+        crs_authid = src_layer.crs().authid() or 'EPSG:4326'
+        src_has_geom = src_layer.wkbType() != QgsWkbTypes.Type.NoGeometry
         if src_has_geom:
-            geom_token = QgsWkbTypes.displayString(pt_layer.wkbType()) or 'Point'
+            geom_token = QgsWkbTypes.displayString(src_layer.wkbType()) or 'Point'
             uri = '%s?crs=%s' % (geom_token, crs_authid)
         else:
             uri = 'NoGeometry?crs=%s' % crs_authid
-        out_layer = QgsVectorLayer(
-            uri, self._unique_name('包含查询结果'), 'memory')
+        out_layer = QgsVectorLayer(uri, self._unique_name(self._result_name(src_layer)), 'memory')
         provider = out_layer.dataProvider()
         provider.addAttributes(fields)
         out_layer.updateFields()
 
-        # 导出表格需要全部匹配结果；图层仅显示"在范围内"(within=='是')的结果
         feats_all = []
         feats_layer = []
-        for idx, pt_g, pa, within, area, vals in result_rows:
+        for _idx, geom, area_name, area_attrs, within, area_m2, vals in rows:
             f = QgsFeature()
             f.setFields(fields)
             if src_has_geom:
-                f.setGeometry(pt_g)
+                f.setGeometry(geom)
             av = ['' if v is None else str(v) for v in vals]
             av.append(within)
-            av.append('' if area is None else ('%.2f' % area))
-            if pa is None:
-                av += [''] * len(extra)
-            else:
-                av += ['' if pa[i] is None else str(pa[i]) for i in range(min(len(poly_fields), len(pa)))]
-                av += [''] * (len(extra) - min(len(poly_fields), len(pa)))
+            av.append('' if area_m2 is None else ('%.2f' % area_m2))
+            if add_area_col:
+                av.append(area_name or '')
+            for _out, a_name, i in extra_cols:
+                if area_attrs is not None and a_name == area_name and i < len(area_attrs):
+                    v = area_attrs[i]
+                    av.append('' if v is None else str(v))
+                else:
+                    av.append('')
             f.setAttributes(av)
             feats_all.append(f)
             if within == '是':
                 feats_layer.append(f)
+
         # 仅把"在范围内"的结果写入图层，不在范围内的不显示在地图上
         if feats_layer:
             provider.addFeatures(feats_layer)
@@ -422,22 +633,52 @@ class ContainQueryDialog(QDialog):
             self.iface.layerTreeView().refreshLayerSymbology(out_layer.id())
         except Exception as e:
             QgsMessageLog.logMessage('导出后刷新画布/符号失败: %s' % e, 'Shape_Layer_Tools', Qgis.MessageLevel.Warning)
+        return out_layer, feats_all, feats_layer, fields
 
-        # 导出表格（保留全部匹配结果）
+    @staticmethod
+    def _result_name(src_layer):
+        return '%s-包含查询结果' % src_layer.name()
+
+    def _export_and_report(self, results):
         out_path = self.edit_out.text().strip()
         if not out_path:
-            out_path = self.edit_out.text = os.path.expanduser('~/contain_query_result.csv')
-        try:
-            if out_path.lower().endswith('.xlsx'):
-                self._write_xlsx(out_path, fields, feats_all)
-            else:
-                self._write_csv(out_path, fields, feats_all)
-            msg = ('查询完成：共处理 %d 条记录，其中 %d 条在范围内（图层仅显示这些）。\n'
-                   '已新增图层 "%s"，并将全部 %d 条匹配结果导出表格到：\n%s') % (
-                len(feats_all), len(feats_layer), out_layer.name(), len(feats_all), out_path)
+            out_path = os.path.expanduser('~/contain_query_result.csv')
+            self.edit_out.setText(out_path)
+        multi = len(results) > 1
+        base, ext = os.path.splitext(out_path)
+        if not ext:
+            ext = '.csv'
+
+        lines = []
+        failures = []
+        for src_layer, _extra, _ac, out_layer, feats_all, feats_layer, fields in results:
+            path = out_path
+            if multi:
+                safe = self._safe_name(src_layer.name())
+                path = '%s_%s%s' % (base, safe, ext)
+            try:
+                if path.lower().endswith('.xlsx'):
+                    self._write_xlsx(path, fields, feats_all)
+                else:
+                    self._write_csv(path, fields, feats_all)
+                lines.append('· %s：处理 %d 条，其中 %d 条在范围内，已生成图层 "%s"，表格 → %s' % (
+                    src_layer.name(), len(feats_all), len(feats_layer), out_layer.name(), path))
+            except Exception as exc:
+                failures.append('%s：%s' % (src_layer.name(), exc))
+                lines.append('· %s：图层已生成 "%s"，但表格导出失败（%s）' % (
+                    src_layer.name(), out_layer.name(), exc))
+
+        msg = '查询完成！\n\n%s\n\n说明：结果图层仅显示"在范围内"的要素，导出表格包含全部记录。' % '\n'.join(lines)
+        if failures:
+            QMessageBox.warning(self, '部分导出失败', msg)
+        else:
             QMessageBox.information(self, '查询完成', msg)
-        except Exception as exc:
-            QMessageBox.warning(self, '导出失败', '图层已生成，但表格导出失败：%s' % str(exc))
+
+    @staticmethod
+    def _safe_name(name):
+        bad = '\\/:*?"<>|'
+        out = ''.join('_' if c in bad else c for c in str(name)).strip()
+        return out or 'layer'
 
     def _write_csv(self, path, fields, feats):
         names = [f.name() for f in fields]

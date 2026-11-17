@@ -46,8 +46,11 @@ def _distinct_colors(count):
 
 
 # 形状类型标签与顺序（供“生成图层”与“分类设置”共用）
-SHAPE_LABELS = {'circle': '圆点', 'square': '方形', 'sector': '扇形', 'sword': '剑形'}
-SHAPE_LIST_ORDER = ['circle', 'square', 'sector', 'sword']
+SHAPE_LABELS = {
+    'circle': '圆点', 'square': '方形', 'sector': '扇形', 'sword': '剑形',
+    'star': '星形', 'cross': '十字', 'hexagon': '六边形', 'plane': '飞机',
+}
+SHAPE_LIST_ORDER = ['circle', 'square', 'sector', 'sword', 'star', 'cross', 'hexagon', 'plane']
 
 
 # QgsVectorFileWriter.WriterError 错误码 → 中文说明，便于定位

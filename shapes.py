@@ -99,17 +99,84 @@ def sword_polygon(lon, lat, length_m, width_m, bearing_deg):
     return pts
 
 
+def star_polygon(lon, lat, size_m, bearing_deg, points=5, inner_factor=0.45):
+    """星形：外半径为 size，内半径 = size*inner_factor，5 角中的一个角指向方位角。"""
+    a0 = math.radians(bearing_deg)
+    pts = []
+    for i in range(points * 2):
+        ang = a0 + i * math.pi / points
+        r = size_m if i % 2 == 0 else size_m * inner_factor
+        east = r * math.sin(ang)
+        north = r * math.cos(ang)
+        dlon, dlat = _degree_offset(lat, east, north)
+        pts.append((lon + dlon, lat + dlat))
+    pts.append(pts[0])
+    return pts
+
+
+def hexagon_polygon(lon, lat, size_m, bearing_deg):
+    """正六边形：外接圆半径 size，一个角指向方位角。"""
+    a0 = math.radians(bearing_deg)
+    pts = []
+    for i in range(6):
+        ang = a0 + i * 2 * math.pi / 6
+        east = size_m * math.sin(ang)
+        north = size_m * math.cos(ang)
+        dlon, dlat = _degree_offset(lat, east, north)
+        pts.append((lon + dlon, lat + dlat))
+    pts.append(pts[0])
+    return pts
+
+
+def cross_polygon(lon, lat, size_m, bearing_deg):
+    """十字（加号）：总长约等于 size，臂宽较窄，正面沿方位角。"""
+    a = size_m / 2.0
+    b = size_m * 0.16
+    local = [
+        (a, b), (a, -b), (b, -b), (b, -a), (-b, -a), (-b, -b),
+        (-a, -b), (-a, b), (-b, b), (-b, a), (b, a), (b, b),
+    ]
+    pts = []
+    for f, p in local:
+        dlon, dlat = _local_offset(lat, f, p, bearing_deg)
+        pts.append((lon + dlon, lat + dlat))
+    pts.append(pts[0])
+    return pts
+
+
+def plane_polygon(lon, lat, size_m, bearing_deg):
+    """飞机：机头朝向方位角，翼展/机身按 size 比例缩放。"""
+    scale = size_m / 4.0  # 飞机总长约等于 size
+    local = [
+        (4.0, 0.0),        # 机头
+        (1.4, 2.8), (1.0, 2.8), (1.0, 0.9),   # 右翼
+        (-0.1, 0.8), (-0.1, 1.7), (-1.8, 1.2), (-1.8, 0.4), (-0.7, 0.0),
+        (-1.8, -0.4), (-1.8, -1.2), (-0.1, -1.7), (-0.1, -0.8),  # 左翼
+        (1.0, -0.9), (1.0, -2.8), (1.4, -2.8),
+    ]
+    pts = []
+    for f, p in local:
+        dlon, dlat = _local_offset(lat, f * scale, p * scale, bearing_deg)
+        pts.append((lon + dlon, lat + dlat))
+    pts.append(pts[0])
+    return pts
+
+
 POLYGON_BUILDERS = {
     'circle': circle_polygon,
     'square': square_polygon,
     'sector': sector_polygon,
     'sword': sword_polygon,
+    'star': star_polygon,
+    'hexagon': hexagon_polygon,
+    'cross': cross_polygon,
+    'plane': plane_polygon,
 }
 
 
 def build_polygon(shape, lon, lat, size_m, bearing_deg, width_deg=None, sword_width_m=None):
     """统一入口：返回多边形顶点列表 [(lon,lat), ...]，带闭合。
-    shape: 'circle' | 'square' | 'sector' | 'sword'
+    shape: 'circle' | 'square' | 'sector' | 'sword' | 'star' | 'hexagon' | 'cross' | 'plane'
     """
     shape = shape.lower()
     if shape == 'circle':
@@ -122,4 +189,12 @@ def build_polygon(shape, lon, lat, size_m, bearing_deg, width_deg=None, sword_wi
     if shape == 'sword':
         sw = sword_width_m if sword_width_m not in (None, 0) else size_m * 0.3
         return sword_polygon(lon, lat, size_m, sw, bearing_deg)
+    if shape == 'star':
+        return star_polygon(lon, lat, size_m, bearing_deg)
+    if shape == 'hexagon':
+        return hexagon_polygon(lon, lat, size_m, bearing_deg)
+    if shape == 'cross':
+        return cross_polygon(lon, lat, size_m, bearing_deg)
+    if shape == 'plane':
+        return plane_polygon(lon, lat, size_m, bearing_deg)
     raise ValueError('未知形状类型: %s' % shape)

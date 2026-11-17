@@ -2,8 +2,10 @@
 """通用 UI 组件：颜色选择相关的小部件与“分类设置”弹出窗口。
 被“生成图层”主对话框使用；本模块独立，可单独修改而不影响其他功能模块。"""
 
+import math
+
 from qgis.PyQt.QtCore import Qt, pyqtSignal
-from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtGui import QColor, QIcon, QPixmap, QPainter, QPainterPath
 from qgis.PyQt.QtWidgets import (
     QPushButton,
     QDialog,
@@ -24,7 +26,71 @@ from qgis.PyQt.QtWidgets import (
 from .utils import _to_float, SHAPE_LABELS, SHAPE_LIST_ORDER
 
 
+def _glyph_points(shape):
+    """返回形状的归一化示意图顶点 (x, y)（[-1,1] 内），用于绘制下拉框图标。"""
+    if shape == 'circle':
+        return [(0.9 * math.cos(math.radians(a)), 0.9 * math.sin(math.radians(a)))
+                for a in range(0, 360, 15)]
+    if shape == 'square':
+        return [(0.8, 0.8), (0.8, -0.8), (-0.8, -0.8), (-0.8, 0.8)]
+    if shape == 'sector':
+        pts = [(0.0, 0.0)]
+        for a in range(50, 131):
+            pts.append((0.9 * math.cos(math.radians(a)), -0.9 * math.sin(math.radians(a))))
+        pts.append((0.0, 0.0))
+        return pts
+    if shape == 'sword':
+        return [(1.0, 0.0), (0.15, 0.5), (0.0, 0.5), (-0.15, 0.0),
+                (0.0, -0.5), (0.15, -0.5)]
+    if shape == 'star':
+        pts = []
+        for i in range(10):
+            r = 1.0 if i % 2 == 0 else 0.45
+            ang = math.radians(-90 + i * 36)
+            pts.append((r * math.cos(ang), r * math.sin(ang)))
+        return pts
+    if shape == 'hexagon':
+        return [(0.9 * math.cos(math.radians(a)), 0.9 * math.sin(math.radians(a)))
+                for a in range(0, 360, 60)]
+    if shape == 'cross':
+        a, b = 0.85, 0.32
+        return [(a, b), (a, -b), (b, -b), (b, -a), (-b, -a), (-b, -b),
+                (-a, -b), (-a, b), (-b, b), (-b, a), (b, a), (b, b)]
+    if shape == 'plane':
+        sc = 0.26
+        base = [
+            (4.0, 0.0), (1.4, 2.8), (1.0, 2.8), (1.0, 0.9), (-0.1, 0.8),
+            (-0.1, 1.7), (-1.8, 1.2), (-1.8, 0.4), (-0.7, 0.0), (-1.8, -0.4),
+            (-1.8, -1.2), (-0.1, -1.7), (-0.1, -0.8), (1.0, -0.9),
+            (1.0, -2.8), (1.4, -2.8),
+        ]
+        return [(x * sc, y * sc) for x, y in base]
+    return [(0.8, 0.8), (0.8, -0.8), (-0.8, -0.8), (-0.8, 0.8)]
+
+
+def shape_icon(shape):
+    """生成 28×28 的形状示意图标（深灰实心），供形状下拉框“图标+文字”使用。"""
+    pm = QPixmap(28, 28)
+    pm.fill(Qt.GlobalColor.transparent)
+    path = QPainterPath()
+    for i, (x, y) in enumerate(_glyph_points(shape)):
+        px = (x + 1.0) * 13.0
+        py = (y + 1.0) * 13.0
+        if i == 0:
+            path.moveTo(px, py)
+        else:
+            path.lineTo(px, py)
+    path.closeSubpath()
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.fillPath(path, QColor('#444444'))
+    p.end()
+    return QIcon(pm)
+
+
 class ColorButton(QPushButton):
+    colorChanged = pyqtSignal()
+
     def __init__(self, color, parent=None):
         super().__init__(parent)
         self.setColor(QColor(color))
@@ -35,6 +101,7 @@ class ColorButton(QPushButton):
         self.color = QColor(color)
         self.setStyleSheet('background-color:%s; border:1px solid #888;' % self.color.name())
         self.setText(self.color.name())
+        self.colorChanged.emit()
 
     def _pick(self):
         dlg = ColorPickDialog(self, self.color)
@@ -192,7 +259,7 @@ class ClassifyConfigDialog(QDialog):
             self.table.setItem(i, 0, QTableWidgetItem(str(v)))
             cmb = QComboBox()
             for k in SHAPE_LIST_ORDER:
-                cmb.addItem(SHAPE_LABELS[k], k)
+                cmb.addItem(shape_icon(k), SHAPE_LABELS[k], k)
             shape = cfg.get('shape') or self._defaults['shape']
             cmb.setCurrentIndex(cmb.findData(shape))
             self.table.setCellWidget(i, 1, cmb)
