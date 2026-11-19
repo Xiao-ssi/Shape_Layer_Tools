@@ -2,7 +2,7 @@
 
 Pluggable tools for network optimization (net-op) work in QGIS, providing common vector-layer operations.
 
-A QGIS plugin with layer tools for network optimization: generate sector shapes from an Excel table, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络同覆盖评估、3CC组合评估）。
+A QGIS plugin with layer tools for network optimization: generate sector shapes from an Excel table, run layer containment queries, buffer/shrink point, line and polygon layers, and export to SHP/TAB/KML/KMZ/xlsx.网络优化常用图层工具，目前功能：无需固定模板制作图层，快速查询图层，支持导出为SHP/TAB/KML/KMZ谷歌地球文件，支持缓冲区制作，可扩大或缩小区域图层，单边扩大线条图层，支持同站同覆盖分析，可根据图形重叠度计算同覆盖（推荐用于2345G网络优化、覆盖评估、多CA频段组合评估）。
 
 ## 功能 / Features
 
@@ -42,19 +42,6 @@ A QGIS plugin with layer tools for network optimization: generate sector shapes 
 
 - 顶部「网优图层工具」工具栏提供每个功能对应的图标按钮，点击即可运行。
 
-## 提交到 QGIS 仓库前的自检
-
-官方插件仓库会用 Bandit 做安全扫描，提交前建议本地先跑一遍（要求 0 告警）：
-
-```bash
-pip install bandit
-bandit -r . -x ./.workbuddy
-```
-
-只要报表是 `Total issues: High 0 / Medium 0 / Low 0` 就不会被打回。
-最容易命中的是 `B608`（把 SQL 用 `+`、`%`、`.format()`、f-string 拼出来）与 `B110`
-（`except Exception: pass`）：前者应改为一律 `?` 参数绑定，语句里只保留内部列名；
-后者应补日志后继续，而不是静默吞掉。
 
 ## 许可协议
 
